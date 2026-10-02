@@ -43,6 +43,8 @@ export class ViewModel {
 
     const skin = new THREE.MeshLambertMaterial({ color: '#e2ad85', flatShading: true });
     const shirt = new THREE.MeshLambertMaterial({ color: '#ece5d2', flatShading: true });
+    this.skinMaterial = skin;
+    this.shirtMaterial = shirt;
     const box = (w, h, d, mat, x, y, z) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
       m.position.set(x, y, z);
@@ -80,6 +82,12 @@ export class ViewModel {
     this.bobAmp = 0;
     this.rest = { ...REST };
     this.pose = { ...REST };
+  }
+
+  /** Kolların ten ve gömlek rengi karakter görünümünden gelir. */
+  setAppearance(app) {
+    this.skinMaterial.color.set(app.skin);
+    this.shirtMaterial.color.set(app.shirt);
   }
 
   setHeld(key) {

@@ -383,8 +383,114 @@ button { font-family: inherit; }
 .intro .i-text { max-width: 620px; font-size: 18px; line-height: 1.7; color: #f3efe4; text-shadow: 0 2px 10px rgba(0,0,0,0.8); margin-top: 10px; font-style: italic; }
 @keyframes introfade { 0% { opacity: 0; } 12% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
 
+/* ── Sol üst: durum çubukları, zorluk, oda paneli ───────── */
+.hud-left { position: absolute; top: 16px; left: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.hud-left .hud-stats { position: static; }
+.diff-badge { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c, var(--accent)); background: rgba(10,18,22,0.55); border: 1px solid color-mix(in srgb, var(--c, #ffc857) 45%, transparent); padding: 3px 10px; border-radius: 20px; }
+.mp-panel { min-width: 230px; padding: 10px 14px; background: linear-gradient(90deg, rgba(10,18,22,0.7), rgba(10,18,22,0.3)); border-radius: var(--radius); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.mp-panel.hidden { display: none; }
+.mp-head { display: flex; justify-content: space-between; align-items: center; color: var(--muted); margin-bottom: 2px; }
+.mp-code { color: var(--accent); letter-spacing: 0.14em; font-size: 14px; }
+.mp-count { font-weight: 700; color: #cfe9ff; }
+.mp-row { display: flex; align-items: center; gap: 7px; color: #e8eef0; }
+.mp-row .dot { width: 8px; height: 8px; border-radius: 50%; background: #5ab8ff; box-shadow: 0 0 6px #5ab8ff; }
+.mp-row.self { color: var(--accent); }
+.mp-row.self .dot { background: #ff5a4a; box-shadow: 0 0 6px #ff5a4a; }
+.mp-row .crown { font-size: 11px; }
+.mp-hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.hud.spectator .hud-stats, .hud.spectator .hotbar, .hud.spectator .hotbar-label, .hud.spectator .crosshair, .hud.spectator .vignette, .hud.spectator .key-hints { display: none; }
+.spectator-tag { position: absolute; top: 82px; left: 50%; transform: translateX(-50%); text-align: center; font-weight: 800; letter-spacing: 0.16em; color: #d8e6ff; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+.spectator-tag small { display: block; font-weight: 500; letter-spacing: 0; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.spectator-tag.hidden { display: none; }
+
+/* ── Sohbet ───────────────────────────────────────────── */
+.chat { position: absolute; left: 16px; bottom: 230px; width: 380px; display: flex; flex-direction: column; gap: 6px; }
+.chat.hidden { display: none; }
+.chat-feed { display: flex; flex-direction: column; gap: 3px; max-height: 210px; overflow: hidden; }
+.chat-line { font-size: 13.5px; line-height: 1.4; color: #f1f4f5; text-shadow: 0 1px 3px rgba(0,0,0,0.9); padding: 2px 8px; background: rgba(8,14,18,0.45); border-radius: 6px; width: fit-content; max-width: 100%; overflow-wrap: anywhere; transition: opacity 1s; }
+.chat-line b { color: #8fd0ff; }
+.chat-line.self b { color: var(--accent); }
+.chat-line.system { color: #c5e7c0; font-style: italic; }
+.chat-line.old { opacity: 0; }
+.chat.open .chat-feed { overflow-y: auto; pointer-events: auto; background: rgba(8,14,18,0.45); border-radius: 8px; padding: 4px; }
+.chat.open .chat-line.old { opacity: 1; }
+.chat-input { display: none; pointer-events: auto; width: 100%; padding: 9px 12px; border-radius: 9px; border: 1px solid rgba(255,200,87,0.5); background: rgba(8,14,18,0.85); color: var(--text); font-size: 14px; outline: none; }
+.chat.open .chat-input { display: block; }
+
+/* ── Ana menü ekleri ──────────────────────────────────── */
+.profile-chip { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 8px 12px; border-radius: 10px; background: var(--bg-softer); border: 1px dashed var(--line); font-weight: 700; }
+.profile-chip small { color: var(--muted); font-weight: 400; margin-left: auto; }
+.profile-chip:hover { border-color: rgba(255,200,87,0.5); }
+.pc-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.7); flex: none; }
+.dialog.wide { width: min(880px, 94vw); }
+.dialog-sub { margin: -6px 0 14px; font-size: 14px; color: var(--muted) !important; }
+.dialog h3 { margin: 0 0 6px; font-size: 17px; }
+.text-input { pointer-events: auto; width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line); background: rgba(0,0,0,0.25); color: var(--text); font-size: 15px; outline: none; }
+.text-input:focus { border-color: rgba(255,200,87,0.6); }
+
+/* Zorluk kartları */
+.diff-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.diff-card { pointer-events: auto; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 6px; padding: 14px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-softer); color: var(--text); transition: transform 0.12s, border-color 0.15s, background 0.15s; }
+.diff-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 60%, transparent); }
+.diff-card.active { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, rgba(255,255,255,0.03)); box-shadow: 0 0 0 1px var(--c) inset, 0 8px 28px color-mix(in srgb, var(--c) 22%, transparent); }
+.dc-icon { font-size: 30px; }
+.dc-name { font-weight: 800; font-size: 17px; color: var(--c); }
+.dc-desc { font-size: 12.5px; line-height: 1.45; color: #d4dadb; min-height: 90px; }
+.dc-stats { margin: 0; padding: 0; list-style: none; font-size: 11.5px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line); padding-top: 6px; }
+
+/* Karakter düzenleyici */
+.char-editor { width: min(940px, 96vw); }
+.char-body { display: grid; grid-template-columns: 340px 1fr; gap: 20px; }
+.char-left { display: flex; flex-direction: column; gap: 8px; }
+.char-stage { height: 430px; border-radius: 14px; background: radial-gradient(circle at 50% 35%, rgba(120,190,220,0.35), rgba(20,40,52,0.6) 70%), linear-gradient(180deg, #1d3a48, #0f1f27); border: 1px solid var(--line); overflow: hidden; }
+.char-preview { display: block; width: 100%; height: 100%; cursor: grab; pointer-events: auto; touch-action: none; }
+.char-preview:active { cursor: grabbing; }
+.char-controls { display: flex; flex-direction: column; gap: 12px; max-height: 470px; overflow-y: auto; padding-right: 6px; }
+.char-section .cs-title { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 7px; }
+.swatch { pointer-events: auto; cursor: pointer; width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.18); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.18); transition: transform 0.1s; }
+.swatch:hover { transform: scale(1.1); }
+.swatch.active { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,200,87,0.85), inset 0 -3px 0 rgba(0,0,0,0.18); }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice { pointer-events: auto; cursor: pointer; padding: 7px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-soft); color: #dfe5e6; font-size: 13px; font-weight: 600; }
+.choice:hover { border-color: rgba(255,255,255,0.3); }
+.choice.active { border-color: var(--accent); color: var(--accent); background: rgba(255,200,87,0.14); }
+
+/* Çok oyunculu menüsü */
+.mp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.mp-col { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 12px; background: var(--bg-softer); border: 1px solid var(--line); }
+.mp-col p { margin: 0; font-size: 13px; color: var(--muted); }
+.mp-col .btn { text-align: left; }
+.mp-col .btn small { display: block; font-size: 12px; font-weight: 500; opacity: 0.75; margin-top: 2px; }
+.join-row { display: flex; gap: 8px; }
+.join-btn { white-space: nowrap; }
+.code-input { font-family: ui-monospace, 'Consolas', monospace; font-size: 22px; letter-spacing: 0.3em; text-transform: uppercase; text-align: center; }
+.mp-status { min-height: 20px; font-size: 13px; color: #bfe3ff; }
+.mp-status.err { color: #ffb1a8; }
+.mp-profile { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 14px; }
+.mp-profile .btn { margin-left: auto; }
+
+/* Duraklatma: oda bilgisi */
+.pause-room { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.room-code { pointer-events: auto; cursor: copy; font-family: ui-monospace, 'Consolas', monospace; font-size: 28px; font-weight: 800; letter-spacing: 0.3em; padding: 4px 8px 4px 16px; color: var(--accent); background: rgba(255,200,87,0.08); border: 1px dashed rgba(255,200,87,0.5); border-radius: 10px; }
+.pr-names { color: #e3e9ea; }
+.pause-diff { font-weight: 800; }
+
+/* Hardcore: oyun bitti */
+.gameover { border-color: rgba(255,91,91,0.4); }
+.go-skull { font-size: 56px; animation: fadepulse 2.4s infinite; }
+.gameover h2 { color: #ff7b6b; letter-spacing: 0.14em; }
+.go-stats { display: flex; justify-content: center; gap: 22px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.go-stats div { display: flex; flex-direction: column; align-items: center; }
+.go-stats b { font-size: 22px; color: var(--text); }
+.intro .i-diff { margin-top: 14px; font-size: 15px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
+
 @media (max-width: 900px) {
   .inv-layout, .craft-layout, .journal-layout, .container-layout { grid-template-columns: 1fr; }
   .quest-tracker { width: 230px; }
   .compass { width: 300px; }
+  .diff-grid { grid-template-columns: 1fr 1fr; }
+  .char-body, .mp-cols { grid-template-columns: 1fr; }
+  .char-stage { height: 300px; }
+  .chat { width: 300px; }
 }

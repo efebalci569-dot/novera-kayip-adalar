@@ -365,8 +365,38 @@ export class ResourceManager {
 
   // ── Etkileşim ───────────────────────────────────────────
   /** Vuruş uygular. Kaynak tükendiyse true döner. */
+  /** Çok oyunculu: bu düğümdeki değişikliği diğer oyunculara bildir. */
+  notify(node, k, fx = 0, fz = 0) {
+    const net = this.world.game.net;
+    if (this.applyingRemote || !net?.active) return;
+    net.emit({ t: 'node', id: node.id, k, hp: node.hp, u: node.uses, fx: +fx.toFixed(2), fz: +fz.toFixed(2) });
+  }
+
+  /** Başka bir oyuncunun yaptığı değişikliği (vurma, toplama, yeniden doğma) uygular. */
+  applyRemote(msg) {
+    const n = this.nodes[msg.id];
+    if (!n || n.removed) return;
+    this.applyingRemote = true;
+    try {
+      if (msg.k === 'hit') {
+        const amount = n.hp - msg.hp;
+        if (n.active && amount > 0) this.damage(n, amount, msg.fx, msg.fz);
+      } else if (msg.k === 'use') {
+        while (n.active && n.uses > msg.u) this.consumeUse(n);
+      } else if (msg.k === 'respawn') {
+        if (!n.active) {
+          if (n.anim) this.finishAnim(n);
+          this.respawn(n);
+        }
+      }
+    } finally {
+      this.applyingRemote = false;
+    }
+  }
+
   damage(node, amount, fromX, fromZ) {
     node.hp = Math.max(0, node.hp - amount);
+    this.notify(node, 'hit', fromX, fromZ);
     const dx = node.x - fromX;
     const dz = node.z - fromZ;
     const d = Math.hypot(dx, dz) || 1;
@@ -409,6 +439,7 @@ export class ResourceManager {
   /** Elle toplama. Kaynak tükendiyse true döner. */
   consumeUse(node) {
     node.uses = Math.max(0, node.uses - 1);
+    this.notify(node, 'use');
     if (node.uses <= 0) {
       this.deplete(node);
       node.anim = { type: 'shrink', t: 0, dur: 0.3 };
@@ -458,6 +489,7 @@ export class ResourceManager {
     }
     this.animating.add(node);
     this.depleted.delete(node);
+    this.notify(node, 'respawn');
   }
 
   // ── Güncelleme ──────────────────────────────────────────
@@ -516,7 +548,8 @@ export class ResourceManager {
     }
 
     this.respawnTimer -= dt;
-    if (this.respawnTimer <= 0) {
+    // çok oyunculuda yeniden doğmaları yalnızca ev sahibi yönetir (misafirlere bildirilir)
+    if (this.respawnTimer <= 0 && !this.world.game.net?.isClient) {
       this.respawnTimer = 1;
       for (const n of this.depleted) {
         if (n.anim || elapsed < n.respawnAt) continue;

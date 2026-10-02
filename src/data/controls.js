@@ -20,6 +20,7 @@ export const ACTIONS = {
   techtree: { label: 'Teknoloji Ağacı', keys: ['KeyT'] },
   rotate: { label: 'Yapıyı Döndür', keys: ['KeyR'] },
   camera: { label: 'Kamera (1. / 3. şahıs)', keys: ['KeyV'] },
+  chat: { label: 'Sohbet (çok oyunculu)', keys: ['Enter'] },
   hotbar1: { label: 'Hızlı Slot 1', keys: ['Digit1'] },
   hotbar2: { label: 'Hızlı Slot 2', keys: ['Digit2'] },
   hotbar3: { label: 'Hızlı Slot 3', keys: ['Digit3'] },

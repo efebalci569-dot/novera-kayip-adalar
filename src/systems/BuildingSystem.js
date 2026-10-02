@@ -64,6 +64,16 @@ export class BuildingSystem {
     return this.buildings.filter((b) => b.type === type).length;
   }
 
+  byUid(uid) {
+    return this.buildings.find((b) => b.uid === uid) ?? null;
+  }
+
+  makeUid() {
+    const net = this.game.net;
+    const who = net?.active ? net.selfId.slice(-5) : 'b';
+    return `${who}${Date.now().toString(36)}${(this.nextId).toString(36)}`;
+  }
+
   isNearStation(station, pos, range = 4.5) {
     return this.buildings.some((b) => BUILDINGS[b.type].station === station && Math.hypot(b.x - pos.x, b.z - pos.z) < range);
   }
@@ -89,7 +99,7 @@ export class BuildingSystem {
   startPlacement(type) {
     const g = this.game;
     const def = BUILDINGS[type];
-    if (!def) return false;
+    if (!def || g.player.ghost) return false;
     if (def.vehicle ? !g.player.inventory.has(def.cost) : !this.isUnlocked(type)) return false;
     if (g.world.inCave) {
       g.notify('Mağarada inşa edemezsin.', 'warn');
@@ -343,6 +353,7 @@ export class BuildingSystem {
 
     if (def.vehicle) {
       const boat = g.vehicles.spawn(type, x, z, this.rotation);
+      g.net?.emit({ t: 'boat', uid: boat.uid, type, x: boat.x, z: boat.z, yaw: boat.yaw });
       g.world.particles.emit('water', x, boat.y + 0.3, z, 1.5);
       g.world.ripples.emit(x, boat.y, z, 2.6, 1.6, 0.5);
       g.audio.play('splash');
@@ -356,11 +367,8 @@ export class BuildingSystem {
     g.player.startAction('build', 0.5, { target: { x, z } });
     const b = this.place(type, x, y, z, this.rotation);
     b.pop = 0;
-
-    // yapının altında kalan, şu an görünmeyen (tükenmiş) kaynaklar orada yeniden çıkmasın
-    g.world.resources.forEachNear(rect.x, rect.z, Math.hypot(rect.hw, rect.hd) + 1, (n) => {
-      if (!n.active && !n.removed && !n.def.cave && circleHitsRect(n.x, n.z, this.nodeRadius(n), rect)) g.world.resources.removeNode(n);
-    });
+    this.clearUnder(rect);
+    g.net?.emit({ t: 'build', uid: b.uid, type, x, y, z, rot: this.rotation });
 
     g.world.particles.emit('dust', x, y + 0.3, z, 1.2 + footprintRadius(def) * 0.4);
     g.audio.play('build');
@@ -381,8 +389,31 @@ export class BuildingSystem {
     g.requestSave();
   }
 
+  /** Yapının altında kalan, şu an görünmeyen (tükenmiş) kaynaklar orada yeniden çıkmasın. */
+  clearUnder(rect) {
+    const res = this.game.world.resources;
+    res.forEachNear(rect.x, rect.z, Math.hypot(rect.hw, rect.hd) + 1, (n) => {
+      if (!n.active && !n.removed && !n.def.cave && circleHitsRect(n.x, n.z, this.nodeRadius(n), rect)) res.removeNode(n);
+    });
+  }
+
+  /** Başka bir oyuncunun kurduğu yapı. */
+  applyRemote(msg) {
+    const def = BUILDINGS[msg.type];
+    if (!def || def.vehicle || this.byUid(msg.uid)) return;
+    const b = this.place(msg.type, msg.x, msg.y, msg.z, msg.rot ?? 0, null, msg.uid);
+    b.pop = 0;
+    this.clearUnder(footprintRect(def, msg.x, msg.z, msg.rot ?? 0));
+    const p = this.game.player.position;
+    const d = Math.hypot(p.x - msg.x, p.z - msg.z);
+    if (d < 40) {
+      this.game.world.particles.emit('dust', msg.x, msg.y + 0.3, msg.z, 1.2);
+      this.game.audio.play('build', { volume: Math.max(0.2, 1 - d / 40) });
+    }
+  }
+
   /** Bir yapıyı dünyaya ekler (yeni yerleştirme ya da kayıttan yükleme). */
-  place(type, x, y, z, rot, storageSlots = null) {
+  place(type, x, y, z, rot, storageSlots = null, uid = null) {
     const g = this.game;
     const def = BUILDINGS[type];
     const mesh = new THREE.Mesh(this.geometry(type), sharedMaterials.standard);
@@ -393,6 +424,7 @@ export class BuildingSystem {
     g.world.buildingsGroup.add(mesh);
 
     const b = { id: this.nextId++, type, x, y, z, rot, mesh, colliders: [], platforms: [], storage: null, light: null, flame: null, pop: 1 };
+    b.uid = uid ?? this.makeUid();
     const c = Math.cos(rot);
     const s = Math.sin(rot);
     const toWorld = (lx, lz) => ({ x: x + lx * c + lz * s, z: z - lx * s + lz * c });
@@ -413,7 +445,7 @@ export class BuildingSystem {
     g.world.grass.addExclusion(rect.x, rect.z, Math.hypot(rect.hw, rect.hd) * 0.8 + 0.2);
     g.world.decor.clearUnder(rect);
     if (def.storage) {
-      b.storage = new Inventory(def.storage, g.bus, `chest_${b.id}`);
+      b.storage = new Inventory(def.storage, g.bus, `chest_${b.uid}`);
       if (storageSlots) b.storage.deserialize(storageSlots, def.storage);
     }
     if (def.light) {
@@ -561,13 +593,14 @@ export class BuildingSystem {
   }
 
   serialize() {
-    return this.buildings.map((b) => ({ type: b.type, x: b.x, y: b.y, z: b.z, rot: b.rot, storage: b.storage?.serialize() }));
+    return this.buildings.map((b) => ({ uid: b.uid, type: b.type, x: b.x, y: b.y, z: b.z, rot: b.rot, storage: b.storage?.serialize() }));
   }
 
   deserialize(list) {
     for (const d of list ?? []) {
       if (!BUILDINGS[d.type] || BUILDINGS[d.type].vehicle) continue;
-      this.place(d.type, d.x, d.y, d.z, d.rot ?? 0, d.storage ?? null);
+      if (d.uid && this.byUid(d.uid)) continue;
+      this.place(d.type, d.x, d.y, d.z, d.rot ?? 0, d.storage ?? null, d.uid ?? null);
     }
   }
 }

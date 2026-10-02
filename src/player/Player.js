@@ -13,7 +13,7 @@ import { dampAngle } from '../utils/math.js';
 export class Player {
   constructor(game) {
     this.game = game;
-    this.model = new PlayerModel();
+    this.model = new PlayerModel(game.profile.appearance);
     game.scene.add(this.model.root);
 
     this.position = new THREE.Vector3();
@@ -33,6 +33,7 @@ export class Player {
     this.action = null;
     this.actionHeld = false;
     this.mounted = null; // bindiği tekne (VehicleSystem)
+    this.ghost = false; // hardcore çok oyunculuda ölünce: görünmez izleyici
 
     this.torchLight = game.world.lights.add({
       x: 0, y: 0, z: 0, color: '#ffb35c', intensity: 7.5, distance: 18, flicker: true, priority: 100, enabled: false,
@@ -147,7 +148,7 @@ export class Player {
       action: this.action ? { type: this.action.type, k: this.action.t / this.action.dur } : null,
     });
 
-    const torch = this.isHoldingTorch && !this.swimming;
+    const torch = this.isHoldingTorch && !this.swimming && !this.ghost;
     this.torchLight.enabled = torch;
     if (torch) {
       this.model.root.updateMatrixWorld(true);

@@ -47,13 +47,21 @@ export class VehicleSystem {
     return s.level - this.game.world.terrain.getHeight(x, z);
   }
 
-  spawn(type, x, z, yaw) {
+  byUid(uid) {
+    return this.boats.find((b) => b.uid === uid) ?? null;
+  }
+
+  spawn(type, x, z, yaw, uid = null) {
     const def = BUILDINGS[type];
     const mesh = new THREE.Mesh(this.geometry(type), sharedMaterials.standard);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.group.add(mesh);
     const b = { type, def, x, z, yaw, y: 0, speed: 0, mesh, roll: 0, pitch: 0 };
+    b.uid = uid ?? `${this.game.net?.active ? this.game.net.selfId.slice(-5) : 'v'}${Date.now().toString(36)}${this.boats.length}`;
+    b.riderId = null; // başka bir oyuncu sürüyorsa onun kimliği
+    b.riderSeen = 0;
+    b.target = null;
     b.interactable = this.game.world.addInteractable({
       kind: 'vehicle', x, y: 0.6, z, range: 3.8, pickRadius: 1.6, pickHeight: 1.2,
       getPrompt: () => (this.mounted ? null : { action: 'Bin', name: def.name }),
@@ -64,10 +72,35 @@ export class VehicleSystem {
     return b;
   }
 
+  /** Başka bir oyuncu bu tekneyi sürüyor mu? */
+  riddenByOther(b) {
+    return !!b.riderId && performance.now() - b.riderSeen < 1500;
+  }
+
+  /** Çok oyunculu: başka bir oyuncunun suya indirdiği tekne. */
+  applyRemoteSpawn(msg) {
+    if (!BUILDINGS[msg.type]?.vehicle || this.byUid(msg.uid)) return;
+    this.spawn(msg.type, msg.x, msg.z, msg.yaw ?? 0, msg.uid);
+  }
+
+  /** Çok oyunculu: başka bir oyuncunun sürdüğü teknenin konumu. m = [uid, x, z, yaw, speed] */
+  applyRemoteMount(riderId, m) {
+    const b = this.byUid(m[0]);
+    if (!b || b === this.mounted) return;
+    b.riderId = riderId;
+    b.riderSeen = performance.now();
+    b.target = { x: m[1], z: m[2], yaw: m[3] };
+    b.speed = m[4] ?? 0;
+  }
+
   board(b) {
     const g = this.game;
     const p = g.player;
     if (this.mounted) return;
+    if (this.riddenByOther(b)) {
+      g.notify(`${b.def.icon} Bu teknede başka biri var.`, 'warn');
+      return;
+    }
     p.cancelAction();
     this.mounted = b;
     p.mounted = b;
@@ -253,6 +286,16 @@ export class VehicleSystem {
     this.time += dt;
     for (const b of this.boats) {
       if (b === this.mounted) this.steer(b, dt, inputEnabled);
+      else if (b.target && this.riddenByOther(b)) {
+        // başka bir oyuncu sürüyor: ağdan gelen konuma yumuşakça git
+        const k = 1 - Math.exp(-10 * dt);
+        b.x += (b.target.x - b.x) * k;
+        b.z += (b.target.z - b.z) * k;
+        let dy = b.target.yaw - b.yaw;
+        while (dy > Math.PI) dy -= Math.PI * 2;
+        while (dy < -Math.PI) dy += Math.PI * 2;
+        b.yaw += dy * k;
+      }
       this.updateBoat(b, dt);
     }
     if (this.mounted) this.placePlayer(this.mounted);
@@ -260,13 +303,15 @@ export class VehicleSystem {
 
   serialize() {
     return {
-      boats: this.boats.map((b) => ({ type: b.type, x: +b.x.toFixed(2), z: +b.z.toFixed(2), yaw: +b.yaw.toFixed(3) })),
+      boats: this.boats.map((b) => ({ uid: b.uid, type: b.type, x: +b.x.toFixed(2), z: +b.z.toFixed(2), yaw: +b.yaw.toFixed(3) })),
       mounted: this.mounted ? this.boats.indexOf(this.mounted) : -1,
     };
   }
 
   deserialize(d) {
-    for (const b of d?.boats ?? []) if (BUILDINGS[b.type]?.vehicle) this.spawn(b.type, b.x, b.z, b.yaw ?? 0);
+    for (const b of d?.boats ?? []) {
+      if (BUILDINGS[b.type]?.vehicle && !(b.uid && this.byUid(b.uid))) this.spawn(b.type, b.x, b.z, b.yaw ?? 0, b.uid ?? null);
+    }
     const m = this.boats[d?.mounted ?? -1];
     if (m) this.board(m);
   }

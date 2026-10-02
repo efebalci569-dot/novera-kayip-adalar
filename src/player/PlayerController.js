@@ -10,6 +10,7 @@ const SWIM_DEPTH = 1.25; // bu derinlikten sonra yüzülür
 const WORLD_LIMIT = 232; // açık denize çıkış sınırı
 const SAFE_FALL = 4.5; // bu yükseklikten (m) sonrası can yakar
 const FALL_DAMAGE_PER_M = 7; // ~18 m düşüş ölümcül
+const GHOST_SPEED = 9;
 
 /** Klavye girdisini kamera yönüne göre harekete çevirir; yerçekimi, zıplama, yüzme ve çarpışma. */
 export class PlayerController {
@@ -35,8 +36,53 @@ export class PlayerController {
     if (!game.player.stats.dead) game.notify(`Yüksekten düştün! (−${Math.round(dmg)} ❤️)`, 'warn');
   }
 
+  /** İzleyici (hayalet): çarpışmasız serbest uçuş, bakılan yöne doğru. */
+  updateGhost(dt, inputEnabled) {
+    const { game, player } = this;
+    const input = game.input;
+    const cam = game.cameraController;
+    let f = 0;
+    let s = 0;
+    let u = 0;
+    if (inputEnabled) {
+      if (input.isDown('forward')) f += 1;
+      if (input.isDown('backward')) f -= 1;
+      if (input.isDown('right')) s += 1;
+      if (input.isDown('left')) s -= 1;
+      if (input.isDown('jump')) u += 1;
+    }
+    const cp = Math.cos(cam.lookPitch);
+    const fx = -Math.sin(cam.yaw) * cp, fy = Math.sin(cam.lookPitch), fz = -Math.cos(cam.yaw) * cp;
+    const rx = Math.cos(cam.yaw), rz = -Math.sin(cam.yaw);
+    const speed = GHOST_SPEED * (inputEnabled && input.isDown('run') ? 2.6 : 1);
+    const v = player.velocity;
+    v.x = damp(v.x, (fx * f + rx * s) * speed, 6, dt);
+    v.y = damp(v.y, (fy * f + u) * speed, 6, dt);
+    v.z = damp(v.z, (fz * f + rz * s) * speed, 6, dt);
+    const pos = player.position;
+    pos.addScaledVector(v, dt);
+    const r = Math.hypot(pos.x, pos.z);
+    if (r > WORLD_LIMIT + 60) {
+      pos.x *= (WORLD_LIMIT + 60) / r;
+      pos.z *= (WORLD_LIMIT + 60) / r;
+    }
+    const floor = game.world.getGroundHeight(pos.x, pos.z, pos.y) - 1.2;
+    pos.y = Math.min(160, Math.max(pos.y, floor, 0.2 - 1.2));
+    player.swimming = false;
+    player.wading = false;
+    player.grounded = false;
+    player.running = false;
+    player.speed = Math.hypot(v.x, v.z);
+    player.yaw = cam.yaw + Math.PI;
+    this.fallPeak = null;
+  }
+
   update(dt, inputEnabled) {
     const { game, player } = this;
+    if (player.ghost) {
+      this.updateGhost(dt, inputEnabled);
+      return;
+    }
     const input = game.input;
     const world = game.world;
     const stats = player.stats;

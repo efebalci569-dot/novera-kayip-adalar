@@ -32,6 +32,9 @@ export class AnimalSystem {
     this.list = [];
     this.respawnQueue = []; // { type, at }
     this.soundTimer = 4;
+    this.nextId = 1;
+    // çok oyunculu misafir: hayvanları ev sahibi yönetir, burada yalnızca gösterilir
+    this.remote = false;
     this._v = new THREE.Vector3();
     this.generate();
   }
@@ -84,6 +87,7 @@ export class AnimalSystem {
     const model = buildAnimalModel(type);
     this.group.add(model.root);
     const a = {
+      id: opts.id ?? this.nextId++,
       type, def, model, x, z, yaw,
       y: this.game.world.terrain.getHeight(x, z),
       hp: opts.hp ?? def.hp,
@@ -92,6 +96,7 @@ export class AnimalSystem {
       phase: Math.random() * 6, graze: 0, hurt: 0, flee: 0,
       dead: false, deathT: 0, carcass: 0, butchered: false, sinkT: 0,
     };
+    if (opts.id && opts.id >= this.nextId) this.nextId = opts.id + 1;
     if (opts.dead) this.kill(a, true);
     this.list.push(a);
     this.placeModel(a, 0);
@@ -127,10 +132,22 @@ export class AnimalSystem {
     return best;
   }
 
-  /** Vuruş: can düşer, hayvan irkilir ve kaçar. Öldüyse true. */
-  hit(a, damage, fromX, fromZ) {
+  byId(id) {
+    return this.list.find((a) => a.id === id) ?? null;
+  }
+
+  /** Vuruş: can düşer, hayvan irkilir ve kaçar. Öldüyse true. attacker: vuran uzak oyuncu (ev sahibinde). */
+  hit(a, damage, fromX, fromZ, attacker = null) {
     if (a.dead) return false;
     const g = this.game;
+    if (this.remote) {
+      // misafir: vuruşu ev sahibine bildir, geri bildirimi hemen göster
+      g.net.emit({ t: 'aHit', id: a.id, d: damage, fx: fromX, fz: fromZ });
+      a.hurt = 1;
+      g.world.particles.emit(a.type === 'chicken' ? 'feather' : 'hit', a.x, a.y + a.def.height * 0.6, a.z, a.type === 'chicken' ? 0.8 : 0.6);
+      g.audio.play(a.def.sound, { volume: 0.9, minGap: 0.2 });
+      return false;
+    }
     a.hp = Math.max(0, a.hp - damage);
     a.hurt = 1;
     const dx = a.x - fromX;
@@ -142,7 +159,7 @@ export class AnimalSystem {
     g.world.particles.emit(a.type === 'chicken' ? 'feather' : 'hit', a.x, a.y + a.def.height * 0.6, a.z, a.type === 'chicken' ? 0.8 : 0.6);
     g.audio.play(a.def.sound, { volume: 0.9, minGap: 0.2 });
     if (a.hp <= 0) {
-      this.kill(a);
+      this.kill(a, false, attacker);
       return true;
     }
     a.state = 'flee';
@@ -151,36 +168,155 @@ export class AnimalSystem {
     return false;
   }
 
-  kill(a, silent = false) {
+  kill(a, silent = false, attacker = null) {
     a.dead = true;
     a.hp = 0;
     a.state = 'dead';
     a.deathT = silent ? 5 : 0;
     a.carcass = 0;
-    a.deathRoll = Math.random() < 0.5 ? 1 : -1;
+    a.deathRoll = a.deathRoll ?? (Math.random() < 0.5 ? 1 : -1);
     if (silent) return;
     const g = this.game;
-    g.progression.addXP(a.def.xp, 'hunt');
+    if (attacker === 'remote-visual') return; // misafirde yalnızca görüntü
+    if (attacker) {
+      // ev sahibi: av ödülü vuran misafire gider
+      g.net.sendTo(attacker, { t: 'aKill', type: a.type, from: g.net.selfId });
+      return;
+    }
+    this.rewardKill(a.type);
+  }
+
+  /** Avlama ödülü (deneyim, istatistik, görev olayı). */
+  rewardKill(type) {
+    const g = this.game;
+    const def = ANIMALS[type];
+    g.progression.addXP(def.xp, 'hunt');
     g.state.stats.animalsHunted = (g.state.stats.animalsHunted ?? 0) + 1;
-    g.bus.emit('animal:killed', { type: a.type, animal: a });
-    g.notify(`${a.def.icon} ${a.def.name} avlandı! Bıçakla [E] parçalayabilirsin.`, 'success');
+    g.bus.emit('animal:killed', { type });
+    g.notify(`${def.icon} ${def.name} avlandı! Bıçakla [E] parçalayabilirsin.`, 'success');
   }
 
   /** Bıçakla parçalama: ganimet verilir, leş toprağa gömülerek kaybolur. */
   butcher(a) {
     if (!a.dead || a.butchered) return;
     const g = this.game;
+    if (this.remote) {
+      // misafir: leşi ev sahibinden iste (iki kişi aynı leşi alamasın)
+      if (a.pendingButcher) return;
+      a.pendingButcher = true;
+      g.net.emit({ t: 'aBut', id: a.id });
+      return;
+    }
+    this.markButchered(a);
+    this.rewardButcher(a.type, rollDrops(a.def.harvest, g.progression.bonus('extraYield')), a);
+  }
+
+  markButchered(a) {
     a.butchered = true;
     a.sinkT = 0;
-    const drops = rollDrops(a.def.harvest, g.progression.bonus('extraYield'));
-    g.interaction.giveItems(drops);
-    g.progression.addXP(Math.round(a.def.xp * 0.5), 'hunt');
-    g.world.particles.emit('dust', a.x, a.y + 0.3, a.z, 1.1);
-    if (a.type === 'chicken') g.world.particles.emit('feather', a.x, a.y + 0.3, a.z, 2);
-    if (a.type === 'sheep') g.world.particles.emit('wool', a.x, a.y + 0.4, a.z, 1.5);
-    g.bus.emit('animal:butchered', { type: a.type });
     this.queueRespawn(a.type);
+  }
+
+  rewardButcher(type, drops, a = null) {
+    const g = this.game;
+    const def = ANIMALS[type];
+    g.interaction.giveItems(drops);
+    g.progression.addXP(Math.round(def.xp * 0.5), 'hunt');
+    if (a) {
+      g.world.particles.emit('dust', a.x, a.y + 0.3, a.z, 1.1);
+      if (type === 'chicken') g.world.particles.emit('feather', a.x, a.y + 0.3, a.z, 2);
+      if (type === 'sheep') g.world.particles.emit('wool', a.x, a.y + 0.4, a.z, 1.5);
+    }
+    g.bus.emit('animal:butchered', { type });
     g.requestSave();
+  }
+
+  // ── Çok oyunculu ────────────────────────────────────────
+  /** Misafir moduna geç: yapay zekâ ve yeniden doğma kapanır, durum ev sahibinden gelir. */
+  setRemote(on) {
+    this.remote = on;
+    this.respawnQueue = [];
+  }
+
+  /** Ev sahibi → misafir: tüm hayvanların sıkıştırılmış durumu. */
+  snapshot() {
+    const types = Object.keys(ANIMALS);
+    return this.list.map((a) => [
+      a.id, types.indexOf(a.type), Math.round(a.x * 100) / 100, Math.round(a.z * 100) / 100, Math.round(a.yaw * 100) / 100,
+      a.state === 'flee' ? 2 : a.state === 'walk' ? 1 : 0, Math.round(a.speed * 100) / 100, Math.round(a.graze * 100) / 100,
+      (a.dead ? 1 : 0) | (a.butchered ? 2 : 0) | (a.hurt > 0.6 ? 4 : 0), a.deathRoll ?? 1,
+    ]);
+  }
+
+  /** Misafir: ev sahibinin durumunu uygula (eksikleri oluştur, olmayanları kaldır). */
+  applySnapshot(list) {
+    const types = Object.keys(ANIMALS);
+    const seen = new Set();
+    for (const [id, ti, x, z, yaw, st, speed, graze, flags, roll] of list ?? []) {
+      const type = types[ti];
+      if (!type) continue;
+      seen.add(id);
+      let a = this.byId(id);
+      if (!a) {
+        if (flags & 2) continue; // parçalanmış leşi yeniden yaratma
+        a = this.spawn(type, x, z, yaw, { id, dead: !!(flags & 1) });
+        a.deathRoll = roll;
+      }
+      a.netTarget = { x, z, yaw };
+      a.state = a.dead ? 'dead' : st === 2 ? 'flee' : st === 1 ? 'walk' : 'idle';
+      a.speed = speed;
+      a.graze = graze;
+      if (flags & 4 && a.hurt <= 0) a.hurt = 1;
+      if (flags & 1 && !a.dead) {
+        a.deathRoll = roll;
+        this.kill(a, false, 'remote-visual');
+      }
+      if (flags & 2 && !a.butchered) {
+        a.butchered = true;
+        a.sinkT = 0;
+      }
+    }
+    for (const a of [...this.list]) {
+      if (!seen.has(a.id) && !a.butchered) this.remove(a);
+    }
+  }
+
+  /** Ev sahibi: bir misafirin vuruşu. */
+  remoteHit(msg) {
+    const a = this.byId(msg.id);
+    if (!a || a.dead) return;
+    this.hit(a, Math.min(40, Number(msg.d) || 0), Number(msg.fx) || a.x, Number(msg.fz) || a.z, msg.from);
+  }
+
+  /** Ev sahibi: bir misafirin parçalama isteği (ilk gelen alır). */
+  remoteButcher(msg) {
+    const a = this.byId(msg.id);
+    const net = this.game.net;
+    if (!a || !a.dead || a.butchered) {
+      net.sendTo(msg.from, { t: 'aButNo', id: msg.id, from: net.selfId });
+      return;
+    }
+    this.markButchered(a);
+    const drops = rollDrops(a.def.harvest);
+    net.sendTo(msg.from, { t: 'aButOk', id: a.id, type: a.type, drops, from: net.selfId });
+  }
+
+  onRemoteKill(msg) {
+    if (ANIMALS[msg.type]) this.rewardKill(msg.type);
+  }
+
+  onButcherOk(msg) {
+    if (!ANIMALS[msg.type]) return;
+    const a = this.byId(msg.id);
+    if (a) a.pendingButcher = false;
+    const drops = (msg.drops ?? []).filter((d) => d && typeof d.item === 'string').map((d) => ({ item: d.item, amount: Math.max(1, Math.min(10, d.amount | 0)) }));
+    this.rewardButcher(msg.type, drops, a);
+  }
+
+  onButcherDenied(msg) {
+    const a = this.byId(msg.id);
+    if (a) a.pendingButcher = false;
+    this.game.notify('Bu leşi başka biri aldı.', 'warn');
   }
 
   queueRespawn(type) {
@@ -226,7 +362,7 @@ export class AnimalSystem {
     const world = this.game.world;
     const pd = Math.hypot(player.x - a.x, player.z - a.z);
 
-    if (def.skittish && a.state !== 'flee' && pd < def.skittish && !this.game.world.inCave) {
+    if (def.skittish && !player.ghost && a.state !== 'flee' && pd < def.skittish && !this.game.world.inCave) {
       a.state = 'flee';
       a.flee = randRange(Math.random, 1.5, 2.5);
       a.fleeDir = Math.atan2(a.x - player.x, a.z - player.z);
@@ -300,12 +436,32 @@ export class AnimalSystem {
     a.y = damp(a.y, world.terrain.getHeight(a.x, a.z), 12, dt);
   }
 
+  /** Misafir: ev sahibinden gelen konuma yumuşak geçiş. */
+  followNet(a, dt) {
+    const t = a.netTarget;
+    if (!t) return;
+    const k = 1 - Math.exp(-8 * dt);
+    if (Math.hypot(t.x - a.x, t.z - a.z) > 15) {
+      a.x = t.x;
+      a.z = t.z;
+    } else {
+      a.x += (t.x - a.x) * k;
+      a.z += (t.z - a.z) * k;
+    }
+    a.yaw = dampAngle(a.yaw, t.yaw, 8, dt);
+    a.y = damp(a.y, this.game.world.terrain.getHeight(a.x, a.z), 12, dt);
+  }
+
   updateDead(a, dt) {
     a.deathT += dt;
     a.carcass += dt;
     if (a.butchered) {
       a.sinkT += dt;
       if (a.sinkT > 1.2) this.remove(a);
+      return;
+    }
+    if (this.remote) {
+      this.followNet(a, dt);
       return;
     }
     if (a.carcass > CARCASS_TIME) {
@@ -380,15 +536,34 @@ export class AnimalSystem {
     m.eyes.scale.y = blink ? 0.2 : 1;
   }
 
+  /** Bir hayvana en yakın oyuncu (çok oyunculuda misafirler de sayılır). */
+  nearestPlayer(a, players) {
+    let best = players[0];
+    let bestD = Infinity;
+    for (const p of players) {
+      const d = Math.hypot(a.x - p.x, a.z - p.z);
+      if (d < bestD) {
+        bestD = d;
+        best = p;
+      }
+    }
+    return { p: best, d: bestD };
+  }
+
   update(dt) {
     const g = this.game;
     const p = g.player.position;
     const cam = g.camera.position;
+    const players = [g.player.ghost ? { x: p.x, z: p.z, ghost: true } : p];
+    if (g.net?.isHost) for (const r of g.remotePlayers.positions()) if (!r.cave) players.push(r);
     for (let i = this.list.length - 1; i >= 0; i--) {
       const a = this.list[i];
-      const d = Math.hypot(a.x - p.x, a.z - p.z);
       if (a.dead) this.updateDead(a, dt);
-      else if (d < ACTIVE_RANGE && g.state.mode === 'playing') this.updateAnimal(a, dt, p);
+      else if (this.remote) this.followNet(a, dt);
+      else {
+        const near = this.nearestPlayer(a, players);
+        if (near.d < ACTIVE_RANGE && g.isSimulating) this.updateAnimal(a, dt, near.p);
+      }
       if (!this.list.includes(a)) continue;
       const visible = Math.hypot(a.x - cam.x, a.z - cam.z) < DRAW_RANGE;
       a.model.root.visible = visible;
@@ -404,7 +579,8 @@ export class AnimalSystem {
       if (a) g.audio.play(a.def.sound, { volume: clamp(1 - Math.hypot(a.x - p.x, a.z - p.z) / 45, 0.15, 0.7), minGap: 1 });
     }
 
-    // yeniden doğma: oyuncudan uzakta, uygun bir çayırda
+    // yeniden doğma: oyuncudan uzakta, uygun bir çayırda (misafirde ev sahibi yönetir)
+    if (this.remote) return;
     const now = g.time.elapsed;
     for (let i = this.respawnQueue.length - 1; i >= 0; i--) {
       const r = this.respawnQueue[i];
@@ -412,7 +588,7 @@ export class AnimalSystem {
       for (let t = 0; t < 30; t++) {
         const x = randRange(Math.random, -190, 190);
         const z = randRange(Math.random, -190, 190);
-        if (Math.hypot(x - p.x, z - p.z) < MIN_SPAWN_DIST) continue;
+        if (players.some((q) => Math.hypot(x - q.x, z - q.z) < MIN_SPAWN_DIST)) continue;
         if (!this.validSpot(r.type, x, z)) continue;
         this.spawn(r.type, x, z, Math.random() * Math.PI * 2);
         this.respawnQueue.splice(i, 1);

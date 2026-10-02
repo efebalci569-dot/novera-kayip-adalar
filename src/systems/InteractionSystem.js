@@ -26,6 +26,11 @@ export class InteractionSystem {
     const input = game.input;
     const player = game.player;
     this.errorCooldown -= dt;
+    if (player.ghost) {
+      // izleyici dünyaya dokunamaz
+      this.target = null;
+      return;
+    }
 
     // teknedeyken tek etkileşim: inmek
     if (player.mounted) {

@@ -117,6 +117,8 @@ export class MapUI extends Panel {
       h('div', { class: 'section-title', style: { marginTop: '12px' } }, 'İşaretler'),
       h('div', { class: 'row' }, '➤', g.world.inCave ? 'Sen (mağarada, dağın altında)' : 'Sen'),
       h('div', { class: 'row' }, h('span', { style: { color: '#ffc857' } }, '◆'), 'Görev hedefi'),
+      ...(g.net.active ? [h('div', { class: 'row' }, h('span', { style: { color: '#5ab8ff' } }, '●'), 'Diğer oyuncular')] : []),
+      ...(g.world.drops.drops.some((d) => d.death) ? [h('div', { class: 'row' }, '💀', 'Ölüm çuvalı (eşyaların)')] : []),
       h('div', { class: 'row', style: { color: '#a9b4b8', marginTop: '8px', fontSize: '12px' } }, `Keşfedilen: ${ex.discoveredRegions.size}/${discoverable.length} bölge`),
     );
   }
@@ -152,6 +154,15 @@ export class MapUI extends Panel {
       const [x, y] = this.toMap(b.x, b.z);
       ctx.fillText(b.def.icon, x, y);
     }
+    // ölüm çuvalları (mağaradakiler girişte gösterilir)
+    const caveEntrance = g.world.landmarks.byId.cave_entrance;
+    for (const d of g.world.drops.drops) {
+      if (!d.death) continue;
+      const at = d.cave ? caveEntrance : d;
+      if (!at) continue;
+      const [x, y] = this.toMap(at.x, at.z);
+      ctx.fillText('💀', x, y);
+    }
     ctx.font = '22px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
     for (const e of ex.visibleLandmarks()) {
       const [x, y] = this.toMap(e.x, e.z);
@@ -173,6 +184,22 @@ export class MapUI extends Panel {
       ctx.fillRect(-6, -6, 12, 12);
       ctx.strokeRect(-6, -6, 12, 12);
       ctx.restore();
+    }
+
+    // odadaki diğer oyuncular
+    ctx.font = 'bold 12px "Segoe UI", sans-serif';
+    for (const o of g.remotePlayers.positions()) {
+      if (o.cave || o.ghost) continue;
+      const [x, y] = this.toMap(o.x, o.z);
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#5ab8ff';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#e8f6ff';
+      ctx.fillText(o.name, x, y - 13);
     }
 
     // oyuncu oku

@@ -23,6 +23,8 @@ export class GameState {
       deaths: 0,
     };
     this.spawnPoint = null;
+    this.difficulty = 'normal';
+    this.worldId = null; // dünyanın kimliği (hardcore çok oyunculuda kimin nerede öldüğünü bilmek için)
   }
 
   hasFeature(id) {
@@ -72,6 +74,8 @@ export class GameState {
       upgrades: this.upgrades,
       stats: this.stats,
       spawnPoint: this.spawnPoint,
+      difficulty: this.difficulty,
+      worldId: this.worldId,
     };
   }
 
@@ -85,5 +89,7 @@ export class GameState {
     this.upgrades = d.upgrades ?? {};
     this.stats = { ...this.stats, ...(d.stats ?? {}) };
     this.spawnPoint = d.spawnPoint ?? null;
+    this.difficulty = d.difficulty ?? 'normal';
+    this.worldId = d.worldId ?? null;
   }
 }

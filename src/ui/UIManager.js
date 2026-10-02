@@ -84,6 +84,7 @@ export class UIManager {
     const { input, state } = this.game;
     for (const k of PANEL_KEYS) {
       if (!input.wasPressed(k.action)) continue;
+      if (this.game.player.ghost && k.panel !== 'map' && k.panel !== 'journal') continue; // izleyici
       if (k.feature && !state.hasFeature(k.feature)) {
         this.hud.toast('🔒 Bu özellik henüz açılmadı. Görevleri takip et!', 'warn', 2200);
         continue;
@@ -95,6 +96,7 @@ export class UIManager {
 
   update(dt) {
     this.hud.update(dt);
+    this.menu.update(dt);
     if (this.active) this.panels[this.active].update(dt);
   }
 }

@@ -20,7 +20,7 @@ export class ProgressionSystem {
 
   addXP(amount, source = '') {
     if (amount <= 0 || this.level >= MAX_LEVEL) return;
-    amount = Math.round(amount);
+    amount = Math.round(amount * (this.game.difficulty?.xp ?? 1));
     this.xp += amount;
     this.game.bus.emit('xp:gained', { amount, source });
     while (this.level < MAX_LEVEL && this.xp >= this.xpToNext) {

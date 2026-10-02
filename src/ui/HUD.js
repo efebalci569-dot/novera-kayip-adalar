@@ -48,6 +48,7 @@ export class HUD {
     this.buildRight();
     this.buildCenter();
     this.buildHotbar();
+    this.buildSocial();
     this.keyHints = h('div', { class: 'key-hints' });
     this.toasts = h('div', { class: 'toasts' });
     this.floatLayer = h('div');
@@ -89,7 +90,112 @@ export class HUD {
       stamina: mk('⚡', 'linear-gradient(90deg,#d8b42a,#ffe56b)'),
     };
     this.effects = h('div', { class: 'stat-effects' });
-    this.el.append(h('div', { class: 'hud-stats' }, ...Object.values(this.statEls).map((s) => s.row), this.effects));
+    this.diffBadge = h('div', { class: 'diff-badge' });
+    this.mpPanel = h('div', { class: 'mp-panel hidden' });
+    this.el.append(h('div', { class: 'hud-left' },
+      h('div', { class: 'hud-stats' }, ...Object.values(this.statEls).map((s) => s.row), this.effects),
+      this.diffBadge,
+      this.mpPanel,
+    ));
+  }
+
+  /** Çok oyunculu: sohbet akışı, sohbet kutusu ve izleyici etiketi. */
+  buildSocial() {
+    this.chatOpen = false;
+    this.chatFeed = h('div', { class: 'chat-feed' });
+    this.chatInput = h('input', { class: 'chat-input', type: 'text', maxlength: '140', placeholder: 'Mesaj yaz… (Enter: gönder · Esc: kapat)' });
+    this.chatInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        const text = this.chatInput.value.trim();
+        if (text) {
+          const sent = this.game.net.sendChat(text);
+          if (sent) this.chatMessage(this.game.profile.name, sent, true);
+        }
+        this.closeChat();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this.closeChat();
+      }
+    });
+    this.chatInput.addEventListener('blur', () => {
+      if (this.chatOpen) setTimeout(() => this.chatOpen && this.closeChat(false), 0);
+    });
+    this.chatBox = h('div', { class: 'chat hidden' }, this.chatFeed, this.chatInput);
+    this.spectatorTag = h('div', { class: 'spectator-tag hidden' }, '👻 İZLEYİCİ MODU', h('small', {}, 'Hardcore: bu dünyada tek canın vardı. Diğerlerini izleyebilirsin.'));
+    this.el.append(this.chatBox, this.spectatorTag);
+  }
+
+  openChat() {
+    if (this.chatOpen) return;
+    this.chatOpen = true;
+    this.chatBox.classList.remove('hidden');
+    this.chatBox.classList.add('open');
+    this.chatInput.value = '';
+    this.game.input.exitLock();
+    setTimeout(() => this.chatInput.focus(), 0);
+  }
+
+  closeChat(relock = true) {
+    if (!this.chatOpen) return;
+    this.chatOpen = false;
+    this.chatBox.classList.remove('open');
+    this.chatInput.blur();
+    const g = this.game;
+    if (relock && g.state.mode === 'playing' && !g.ui.active && !g.mpMenu) g.input.requestLock();
+  }
+
+  addChatLine(el) {
+    this.chatBox.classList.remove('hidden');
+    this.chatFeed.append(el);
+    while (this.chatFeed.children.length > 40) this.chatFeed.firstChild.remove();
+    this.chatFeed.scrollTop = this.chatFeed.scrollHeight;
+    setTimeout(() => el.classList.add('old'), 12000);
+  }
+
+  chatMessage(name, text, self = false) {
+    this.addChatLine(h('div', { class: `chat-line ${self ? 'self' : ''}` }, h('b', {}, `${name}: `), text));
+    if (!self) this.game.audio.play('click', { volume: 0.5 });
+  }
+
+  chatSystem(text) {
+    this.addChatLine(h('div', { class: 'chat-line system' }, text));
+  }
+
+  setSpectator(on) {
+    this.el.classList.toggle('spectator', on);
+    this.spectatorTag.classList.toggle('hidden', !on);
+  }
+
+  /** Sol üstteki oda paneli: oda kodu ve oyuncular. */
+  renderPlayers() {
+    const g = this.game;
+    const net = g.net;
+    this.mpPanel.classList.toggle('hidden', !net.active);
+    if (!net.active) {
+      this.mpPanel.replaceChildren();
+      return;
+    }
+    const rows = [{ name: g.profile.name, self: true, host: net.isHost }];
+    for (const p of net.players.values()) rows.push({ name: p.name, host: p.id === net.hostId });
+    this.mpPanel.replaceChildren(
+      h('div', { class: 'mp-head' },
+        h('span', {}, '🌐 Oda ', h('b', { class: 'mp-code' }, net.code ?? '……')),
+        h('span', { class: 'mp-count' }, `${net.playerCount}/8`),
+      ),
+      ...rows.map((r) => h('div', { class: `mp-row ${r.self ? 'self' : ''}` },
+        h('span', { class: 'dot' }), r.name, r.host ? h('span', { class: 'crown', title: 'Odayı kuran' }, '👑') : null)),
+      h('div', { class: 'mp-hint' }, `Sohbet: ${keyLabel(g.settings.bindings.chat?.[0])}`),
+    );
+  }
+
+  renderDifficulty() {
+    const g = this.game;
+    const d = g.difficulty;
+    this.diffShown = g.state.difficulty;
+    this.diffBadge.style.setProperty('--c', d.color);
+    this.diffBadge.textContent = `${d.icon} ${d.name}`;
+    this.diffBadge.title = d.desc;
   }
 
   buildCompass() {
@@ -355,6 +461,7 @@ export class HUD {
   // ── Kare güncellemesi ───────────────────────────────────
   update(dt) {
     const g = this.game;
+    if (this.diffShown !== g.state.difficulty) this.renderDifficulty();
     this.updateStats();
     this.updateRight();
     this.updateCompass();
@@ -362,7 +469,7 @@ export class HUD {
     this.updateMarkers();
     this.updateBuildHelp();
 
-    const showClick = g.state.mode === 'playing' && !g.ui.active && !g.input.pointerLocked;
+    const showClick = g.state.mode === 'playing' && !g.ui.active && !g.input.pointerLocked && !this.chatOpen && !g.mpMenu;
     this.clickHint.classList.toggle('hidden', !showClick);
 
     this.bannerTimer -= dt;

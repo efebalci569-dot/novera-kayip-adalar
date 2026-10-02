@@ -2,7 +2,7 @@
 
 Tarayıcıda oynanan, gerçek 3D (Three.js) bir **ada hayatta kalma** oyunu. Gemi kazasından sağ kurtulan oyuncu, bilinmeyen bir adada sıfırdan başlar: kaynak toplar, alet üretir, ateş yakar, barınak kurar, adayı keşfeder ve "bu adada benden önce kim vardı?" sorusunun peşine düşer.
 
-Bu sürüm **Bölüm 1 + Bölüm 2 başlangıcı**dır: baştan sona oynanabilir bir öğretici + hikâye zinciri, avlanma, mağara, sal/tekne ve seviyeyle açılan barınaklar içerir; sonraki sistemler (düşmanlar, fırın ve demir çağı, yeni adalar…) için modüler bir temel sunar.
+Bu sürüm (**0.3**) **Bölüm 1 + Bölüm 2 başlangıcı**dır: baştan sona oynanabilir bir öğretici + hikâye zinciri, avlanma, mağara, sal/tekne ve seviyeyle açılan barınaklar içerir. Menüden **karakterini tasarlayabilir** (cinsiyet, saç/sakal modelleri, göz/saç/ten rengi), **4 zorluk modundan** birini seçebilir ve arkadaşlarınla **çevrim içi (en fazla 8 kişi)** oynayabilirsin. Sonraki sistemler (düşmanlar, fırın ve demir çağı, yeni adalar…) için modüler bir temel sunar.
 
 ---
 
@@ -11,12 +11,12 @@ Bu sürüm **Bölüm 1 + Bölüm 2 başlangıcı**dır: baştan sona oynanabilir
 Gereksinim: [Node.js](https://nodejs.org) 18+ (geliştirme için). Oyuncu için kurulum gerekmez.
 
 ```bash
-npm install      # bağımlılıklar (three, vite)
+npm install      # bağımlılıklar (three, peerjs, vite)
 npm run dev      # geliştirme sunucusu → http://localhost:5173
 npm run build    # dist/index.html üretir
 ```
 
-`npm run build` çıktısı **tek bir HTML dosyasıdır** (tüm kod ve stiller gömülü). `dist/index.html` dosyasını çift tıklayarak internet ya da kurulum olmadan herhangi bir modern tarayıcıda (Chrome, Edge, Firefox) oynayabilirsin. İlerleme tarayıcının yerel deposuna (localStorage) kaydedilir.
+`npm run build` çıktısı **tek bir HTML dosyasıdır** (tüm kod ve stiller gömülü). `dist/index.html` dosyasını çift tıklayarak internet ya da kurulum olmadan herhangi bir modern tarayıcıda (Chrome, Edge, Firefox) oynayabilirsin (çok oyunculu için internet gerekir). İlerleme tarayıcının yerel deposuna (localStorage) kaydedilir.
 
 ### GitHub Pages'te yayınlama
 
@@ -41,9 +41,47 @@ Repoda `.github/workflows/deploy.yml` hazır: `main` dalına her gönderimde oyu
 | **M** | Harita (keşfettikçe açılır) |
 | **K** | Yetenekler |
 | **T** | Teknoloji ağacı |
+| **Enter** | Sohbet (çok oyunculu): yaz, Enter ile gönder, Esc ile kapat |
 | **Esc** | Menü / paneli kapat |
 
 Tüm tuşlar **Ayarlar → Kontroller** bölümünden değiştirilebilir. Sistemler oyunun başında kilitlidir; görevler ilerledikçe açılır (ör. Üretim, ilk odunları toplayınca gelir).
+
+## Karakter, zorluk ve çok oyunculu
+
+### Karakter düzenleyici (Ana menü → 👤 Karakter)
+
+- **Erkek / kadın** karakter (kadın karakterin gövdesi ve kolları daha ince, kirpikleri ve yanak allığı var).
+- **12 saç modeli**: kısa, yana taralı, kirpi, kıvırcık, ibik, afro, uzun, at kuyruğu, topuz, örgü, küt, kel.
+- **Sakal / bıyık** (erkek): kirli sakal, bıyık, keçi sakalı, tam sakal, uzun sakal.
+- **Renkler**: 8 ten rengi, 14 saç rengi, 8 göz rengi, gömlek ve pantolon renkleri.
+- Döndürülebilir 3B önizleme (sürükle; tekerlek ya da "Yüz" düğmesiyle yüze yakınlaş), 🎲 rastgele karakter, oyuncu adı.
+- Karakter tüm dünyalarda ve çok oyunculuda ortaktır; oyun içinde duraklatma menüsünden de düzenlenebilir.
+- Karakter modeli de güzelleştirildi: kulak, burun, ağız, kaşlar, göz akı/irisi/parıltısı, göz kırpma, kemer, yaka, kıvrılmış paçalar, ayakkabılar.
+
+### Zorluk modları (Yeni Oyun → zorluk seçimi)
+
+| Mod | Açlık / susuzluk | Alınan hasar | Can yenilenmesi | Deneyim | Ölünce |
+| --- | --- | --- | --- | --- | --- |
+| 🌴 **Kolay** | ×0.6 (yavaş) | ×0.6 | ×1.6 | ×1.25 | eşyalar sende kalır |
+| 🏝️ **Normal** | ×1 | ×1 | ×1 | ×1 | eşyalar sende kalır |
+| 🔥 **Zor** | **×1.75 (çok daha hızlı)** | ×1.35 | ×0.6 | ×1.1 | eşyalar öldüğün yerde bir çuvala düşer (haritada 💀) |
+| 💀 **Hardcore** | ×1.75 | ×1.35 | ×0.6 | ×1.3 | **tek can**: tekrar canlanılmaz |
+
+Hardcore'da ölünce tek kişilik dünya **silinir**. Çok oyunculuda ölen oyuncu **izleyici** olur (görünmez, çarpışmasız uçar; WASD + Boşluk + Shift) ve o dünyaya tekrar katılsa bile yalnızca izleyebilir. Zorluk dünya oluşturulurken seçilir ve kayıtla saklanır; çok oyunculuda odayı kuranın zorluğu herkese uygulanır.
+
+### Çok oyunculu (Ana menü → 🌐 Çok Oyunculu)
+
+- **Oda kur**: kayıtlı dünyanla ya da yeni bir dünya (zorluk seçerek) ile. 6 karakterlik **oda kodu** ekranda (sol üst) ve menüde görünür; tıklayınca kopyalanır. Tek kişilik oyunu sürerken de duraklatma menüsünden **🌐 Odayı Aç** ile arkadaşlarını çağırabilirsin.
+- **Odaya katıl**: arkadaşının verdiği kodu yaz → Katıl. Bir odada **en fazla 8 oyuncu** olur; dolu odaya girilmez.
+- Herkes birbirini karakter görünümü, ad etiketi, animasyonları (yürüme, yüzme, vurma, kürek…) ve elindeki meşalenin ışığıyla görür; haritada diğer oyuncular mavi noktadır.
+- Ortak dünya: kesilen ağaçlar/kırılan kayalar, kurulan yapılar, sandık içerikleri, indirilen sal/tekneler (birinin bindiği tekneye başkası binemez), hayvanlar (avlanma, parçalama — leşi ilk alan alır) ve gün/gece herkes için aynıdır.
+- **Ortak uyku**: gece herkes yatağa yatınca sabah olur (kaç kişinin yattığı gösterilir; Esc ile kalkılır).
+- **Sohbet**: Enter.
+- Dünya **odayı kuranın** bilgisayarında çalışır ve kaydedilir; oda kurucu çıkınca oda kapanır. Misafirlerin karakteri (envanter, seviye, görevler) kendi tarayıcılarında saklanır; aynı odaya tekrar katılınca kaldıkları yerden devam ederler. Çok oyunculuda menü açmak oyunu durdurmaz.
+
+**Nasıl çalışıyor?** Tarayıcılar birbirine doğrudan (WebRTC, [PeerJS](https://peerjs.com)) bağlanır; ayrı bir oyun sunucusu yoktur. Oda kodunu eşleştirmek için PeerJS'in ücretsiz genel eşleşme sunucusu kullanılır. Bazı okul/iş ağları ya da sıkı NAT/güvenlik duvarları doğrudan bağlantıyı engelleyebilir (bu durumda "Doğrudan bağlantı kurulamadı" hatası çıkar).
+
+**Kendi eşleşme sunucunu kullanmak** (isteğe bağlı): `npx peer --port 9000` ile bir [PeerJS sunucusu](https://github.com/peers/peerjs-server) çalıştır ve oyunu `?peer=alanadi:9000` ile aç (HTTPS için `&peerSecure=1`, farklı yol için `&peerPath=/yol`). Odadaki herkes aynı adresi kullanmalı.
 
 ## MVP'de neler var?
 
@@ -61,7 +99,7 @@ Tüm tuşlar **Ayarlar → Kontroller** bölümünden değiştirilebilir. Sistem
 - **Barınaklar (seviyeyle açılır)**: Küçük Kulübe (görev), Saz Çardak (Sv 2), Ahşap Kulübe (Sv 5), Taş Ev (Sv 9). Yatak bir barınağın içindeyse uyku daha çok dinlendirir (konfor ★).
 - **Sal ve tekne (seviyeyle açılır)**: çalışma masasında Sal (Sv 4) ve yün yelkenli Tekne (Sv 8) üretilir, envanterden suya indirilir; binilir, W/S ileri-geri, A/D dönüş, kürek/dümen animasyonu, dalgalarla yalpalama, iz halkaları, sığlıkta karaya oturma; kıyıya yakınken **E** ile inilir. Tekne saldan hızlıdır ve açık denize daha uzağa gidebilir (2. ada yakında).
 - **Mağara**: dağın batı eteğindeki kaya kemerli girişten girilen, odalar ve tünellerden oluşan kapalı mağara. Karanlık (meşale işe yarar), sarkıt ve dikitler, parlayan kristaller, kömür ve demir damarları, ışıldayan mantarlar, tavandaki yarıktan süzülen ışıkla çıkış ve madencinin terk ettiği kamp (hikâye notu).
-- **Hayatta kalma**: can, açlık, susuzluk, enerji. Sıfıra inen değerler anında öldürmez; yavaşlatır, enerjiyi geç doldurur ve canı yavaşça azaltır. Bayılınca eşyalar kaybolmaz.
+- **Hayatta kalma**: can, açlık, susuzluk, enerji. Sıfıra inen değerler anında öldürmez; yavaşlatır, enerjiyi geç doldurur ve canı yavaşça azaltır. Ölünce ne olacağı zorluğa bağlıdır (yukarıdaki tablo).
 - **Gün/gece**: hızlandırılmış saat (gündüz ~10 dk, gece ~3.5 dk), gün sayacı, akşam uyarısı, yatakta uyuyarak sabahı bekleme. Geceleri ateş böcekleri ve ormanda uzaktan izleyen parlayan gözler.
 - **Görevler**: 21 öğretici/ana görev + 13 yan görev (av, yatak, mağara, sarmaşık, sal…); pusula ve ekranda hedef işaretleri (hayvanlar ve mağara içi hedefler dahil).
 - **Hikâye**: gemi enkazındaki seyir defteri, terk edilmiş kamp ve günlük, üç antik sembol taşı, dağın altındaki mühürlü kapı (Bölüm 1 finali), mağaradaki madencinin defteri (Bölüm 2).
@@ -88,10 +126,11 @@ src/
     SaveManager.js       localStorage kaydı (sürümlü)
     AudioManager.js      prosedürel ses
     Settings.js          oyuncu ayarları + kalite ön ayarları
+    Profile.js           oyuncu adı + karakter görünümü (tüm dünyalarda ortak)
   player/
     Player.js            oyuncu varlığı, süreli eylemler
     PlayerController.js  hareket, yerçekimi, yüzme, çarpışma
-    PlayerModel.js       karakter modeli + prosedürel animasyon (1. şahısta yalnızca gölgesi görünür)
+    PlayerModel.js       karakter modeli (görünüme göre saç/sakal/renk) + prosedürel animasyon (1. şahısta yalnızca gölgesi görünür)
     CameraController.js  1. / 3. şahıs kamera
     ViewModel.js         1. şahısta eldeki kol ve alet (ayrı geçişte çizilir)
     PlayerStats.js       can/açlık/susuzluk/enerji
@@ -129,11 +168,16 @@ src/
     LootSystem.js        düşüş tabloları, nadirlik
     AnimalSystem.js      hayvan yapay zekâsı, avlanma, ölüm animasyonu, parçalama, yeniden doğma
     VehicleSystem.js     sal/tekne: suya indirme, binme, sürme, kıyıya inme
-  ui/                    HUD, paneller (envanter, üretim, inşa, günlük, harita, yetenekler,
-                         teknoloji ağacı, sandık, not) ve menüler
+  net/
+    Network.js           oda kurma/katılma (PeerJS), mesajlaşma, ev sahibi aktarımı, ortak uyku
+    RemotePlayers.js     diğer oyuncuların modeli, ad etiketi, meşale ışığı, yumuşak geçiş
+  ui/                    HUD (sohbet, oda paneli), paneller (envanter, üretim, inşa, günlük, harita,
+                         yetenekler, teknoloji ağacı, sandık, not), menüler (karakter düzenleyici,
+                         zorluk seçimi, çok oyunculu) ve CharacterPreview.js (3B önizleme)
   data/                  TÜM içerik burada, veri olarak:
     items.js recipes.js resources.js buildings.js quests.js lore.js landmarks.js animals.js
     perks.js techtree.js regions.js islands.js progression.js rarities.js controls.js
+    appearance.js (saç/sakal modelleri, renk paletleri) difficulty.js (zorluk çarpanları)
   utils/                 matematik ve tohumlanabilir gürültü
 ```
 
@@ -160,6 +204,10 @@ iron_axe: {
 
 **Yeni kaynak** (`data/resources.js` + `world/Models.js` içinde bir model fonksiyonu + `ResourceManager.generate()` içinde bir dağılım kuralı).
 
+**Yeni saç / sakal modeli** (`data/appearance.js` içine bir kayıt + `player/PlayerModel.js` → `HAIR_BUILDERS` / `BEARD_BUILDERS` içine aynı anahtarla bir şekil fonksiyonu).
+
+**Zorluk ayarı** (`data/difficulty.js`): her mod için açlık/susuzluk, hasar, can yenilenmesi ve XP çarpanları, ölünce eşya düşürme ve tek can.
+
 **Yeni yapı** (`data/buildings.js` + `Models.js` → `BUILDING_BUILDERS`). `bounds` taban dikdörtgenini (yerleştirme/çakışma), `unlock: { level }` seviye kilidini, `shelter/comfort/interior` barınak özelliklerini belirler.
 
 ## Performans notları
@@ -178,7 +226,7 @@ iron_axe: {
 
 ## Yol haritası (sonraki aşamalar)
 
-Tamamlananlar: pasif hayvanlar ve avlanma (inek, koyun, tavuk), mağara + madencilik (kömür, demir, kristal), sal ve tekne, seviyeyle açılan barınaklar. Sıradakiler:
+Tamamlananlar: pasif hayvanlar ve avlanma (inek, koyun, tavuk), mağara + madencilik (kömür, demir, kristal), sal ve tekne, seviyeyle açılan barınaklar, karakter düzenleyici, zorluk modları, çevrim içi çok oyunculu (8 kişi). Sıradakiler:
 
 1. **2. ada** — tekneyle ufuktaki adalardan birine (volkan, buz, çöl) yolculuk
 2. **Savaş & düşmanlar** — güçlü saldırı, kaçınma; yaban domuzu, kurt, orman yaratığı; gece daha fazla düşman (gece gözleri bunun habercisi). Hasar/yetenek altyapısı avlanmada kullanılıyor.

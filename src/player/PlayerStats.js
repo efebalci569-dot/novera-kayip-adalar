@@ -28,6 +28,12 @@ export class PlayerStats {
     this.exhausted = false;
     this.dead = false;
     this.warned = { hunger: false, thirst: false };
+    this.diff = { decay: 1, damage: 1, regen: 1 };
+  }
+
+  /** Zorluk çarpanları (bkz. data/difficulty.js). */
+  setDifficulty(def) {
+    this.diff = { decay: def?.decay ?? 1, damage: def?.damage ?? 1, regen: def?.regen ?? 1 };
   }
 
   get starving() {
@@ -59,7 +65,7 @@ export class PlayerStats {
 
   update(dt, { running = false, decayMult = 1 } = {}) {
     if (this.dead) return;
-    const runMult = running ? RUN_DECAY_MULT : 1;
+    const runMult = (running ? RUN_DECAY_MULT : 1) * this.diff.decay;
     this.hunger = Math.max(0, this.hunger - HUNGER_PER_SEC * decayMult * runMult * dt);
     this.thirst = Math.max(0, this.thirst - THIRST_PER_SEC * decayMult * runMult * dt);
 
@@ -84,7 +90,7 @@ export class PlayerStats {
     if (this.dehydrated) dmg += THIRST_DAMAGE;
     if (dmg > 0) this.damage(dmg * dt, this.starving ? 'starving' : 'thirst', true);
     else if (this.hunger > 50 && this.thirst > 50 && this.health < this.maxHealth) {
-      this.health = Math.min(this.maxHealth, this.health + REGEN_HEALTH * dt);
+      this.health = Math.min(this.maxHealth, this.health + REGEN_HEALTH * this.diff.regen * dt);
     }
 
     this.checkWarning('hunger', 'Acıktın! Bir şeyler yemelisin.');
@@ -117,7 +123,7 @@ export class PlayerStats {
 
   damage(amount, source = 'unknown', silent = false) {
     if (this.dead) return;
-    const reduced = amount * (1 - Math.min(0.8, this.defense / 100));
+    const reduced = amount * this.diff.damage * (1 - Math.min(0.8, this.defense / 100));
     this.health = Math.max(0, this.health - reduced);
     if (!silent) this.bus.emit('player:damaged', { amount: reduced, source });
     if (this.health <= 0) {
