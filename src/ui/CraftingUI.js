@@ -16,7 +16,7 @@ export class CraftingUI extends Panel {
 
   open(ctx) {
     if (ctx?.station === 'campfire') this.category = 'food';
-    else if (ctx?.station === 'workbench') this.category = 'all';
+    else if (ctx?.station === 'workbench' || ctx?.station === 'furnace') this.category = 'all';
     this.selected = null;
     super.open(ctx);
   }

@@ -42,6 +42,9 @@ export class QuestSystem {
     bus.on('player:drank', () => inc('drink', () => true));
     bus.on('level:up', ({ level }) => this.setValue('level', () => true, level));
     bus.on('time:newDay', ({ day }) => this.setValue('day', () => true, day));
+    bus.on('island:entered', ({ id }) => inc('island', (o) => o.island === id));
+    bus.on('enemy:killed', ({ type, island }) => inc('slay', (o) => (!o.enemy || o.enemy === type) && (!o.island || o.island === island)));
+    bus.on('boss:defeated', ({ id }) => inc('boss', (o) => o.boss === id));
   }
 
   get(id) {
@@ -88,6 +91,8 @@ export class QuestSystem {
       case 'region': return g.exploration.discoveredRegions.has(o.region) ? 1 : 0;
       case 'regions': return g.exploration.discoveredRegions.size;
       case 'level': return g.progression.level;
+      case 'island': return g.exploration.visitedIslands.has(o.island) ? 1 : 0;
+      case 'boss': return g.bosses.isDefeated(o.boss) ? 1 : 0;
       case 'day': return g.time.day;
       case 'craft': {
         if (o.item === 'fiber_backpack') return (g.state.upgrades.backpack ?? 0) >= 1 ? 1 : 0;
@@ -243,6 +248,15 @@ export class QuestSystem {
       } else if (marker.region === 'lake') {
         const L = g.world.island.lake;
         pos = { x: L.x, y: L.level + 1.5, z: L.z };
+      } else if (marker.island) {
+        // haritası bulunmuş adanın varış sahili (yalnızca yüzeyde)
+        if (!g.world.inCave && g.navigation.isKnown(marker.island)) {
+          const a = g.world.arrivalPoint(marker.island);
+          pos = { x: a.x, y: a.y + 3, z: a.z, far: true };
+        }
+      } else if (marker.enemy) {
+        const e = g.world.inCave ? null : g.enemies.nearest(marker.enemy, p.x, p.z, 220);
+        if (e) pos = { x: e.x, y: e.y + e.def.height + 0.6, z: e.z, near: true };
       }
       if (pos) out.push({ ...pos, questId: id, type: quest.type, title: quest.title });
     }

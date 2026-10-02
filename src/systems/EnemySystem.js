@@ -8,7 +8,6 @@ const ACTIVE_RANGE = 120; // bu mesafede oyuncu yoksa düşman donar
 const DRAW_RANGE = 130;
 const CORPSE_TIME = 7;
 const RESPAWN_CLEAR = 45; // yeniden doğarken bu yakınlıkta oyuncu olmasın
-const SEPARATION = 1.4;
 
 /**
  * Yeni adaların saldırgan canlıları. Yuvalarının çevresinde dolaşır, oyuncuyu fark edince
@@ -211,7 +210,7 @@ export class EnemySystem {
     g.interaction.giveItems(drops.filter((d) => d && typeof d.item === 'string'));
     g.progression.addXP(def.xp, 'hunt');
     g.state.stats.enemiesKilled = (g.state.stats.enemiesKilled ?? 0) + 1;
-    g.bus.emit('enemy:killed', { type });
+    g.bus.emit('enemy:killed', { type, island: def.island });
     g.requestSave();
   }
 
@@ -553,9 +552,11 @@ export class EnemySystem {
     const cam = g.camera.position;
     const players = this.players();
     const sim = g.isSimulating;
+    const remotes = g.net?.isHost ? g.remotePlayers.positions() : [];
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
       const camD = Math.hypot(e.x - cam.x, e.z - cam.z);
+      let active = false;
       if (e.dead) {
         e.deathT += dt;
         if (e.deathT > CORPSE_TIME) {
@@ -565,21 +566,23 @@ export class EnemySystem {
       } else if (this.remote) {
         this.followNet(e, dt);
       } else if (sim) {
+        // yalnızca yakınında oyuncu olan düşmanlar düşünür (uzak misafirler dahil)
         let nearD = Infinity;
-        for (const p of players) nearD = Math.min(nearD, Math.hypot(p.x - e.x, p.z - e.z));
-        // uzak oyuncular için de (ev sahibinin yakını olmasa da) çalışır
-        if (g.net?.isHost) for (const r of g.remotePlayers.positions()) nearD = Math.min(nearD, Math.hypot(r.x - e.x, r.z - e.z));
-        if (nearD < ACTIVE_RANGE) this.updateEnemy(e, dt, players);
+        for (const p of players) nearD = Math.min(nearD, Math.abs(p.x - e.x) + Math.abs(p.z - e.z));
+        for (const r of remotes) nearD = Math.min(nearD, Math.abs(r.x - e.x) + Math.abs(r.z - e.z));
+        active = nearD < ACTIVE_RANGE;
+        if (active) this.updateEnemy(e, dt, players);
       }
       // komşularla iç içe girmesin
-      if (!e.dead && !this.remote) {
+      if (active) {
         for (const o of this.list) {
           if (o === e || o.dead) continue;
           const dx = e.x - o.x;
           const dz = e.z - o.z;
+          if (Math.abs(dx) > 3 || Math.abs(dz) > 3) continue;
           const d = Math.hypot(dx, dz);
           const min = (e.def.radius + o.def.radius) * 0.9;
-          if (d < min && d > 1e-3 && d < SEPARATION * 3) {
+          if (d < min && d > 1e-3) {
             e.x += (dx / d) * (min - d) * 0.5;
             e.z += (dz / d) * (min - d) * 0.5;
           }

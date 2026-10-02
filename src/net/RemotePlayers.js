@@ -129,6 +129,7 @@ export class RemotePlayers {
       m.root.rotation.y = e.yaw;
       m.setHeld(s.h || null);
       m.setBackpack(!!s.bp);
+      m.setArmor(typeof s.ar === 'string' && /^[a-z_]{1,24}$/.test(s.ar) ? s.ar : null);
       m.update(dt, {
         speed: s.s ?? 0, running: !!s.r, grounded: !!s.g, swimming: !!s.w,
         sitting: !!s.sit, rowing: s.row ?? 0, steering: !!s.st, sleeping: !!s.sl,

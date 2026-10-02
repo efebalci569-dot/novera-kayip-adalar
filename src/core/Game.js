@@ -554,7 +554,7 @@ export class Game {
       p.velocity.x += (dx / d) * k;
       p.velocity.z += (dz / d) * k;
     }
-    p.cancelAction();
+    if (dmg >= 6) p.cancelAction(); // sert vuruş elindeki işi böler
     this.cameraController.impact(Math.min(0.25, 0.06 + dmg * 0.004));
     this.cameraController.shake(Math.min(0.3, dmg * 0.006));
     this.ui.hud.hurtFlash();
@@ -598,7 +598,7 @@ export class Game {
 
   applyArmor() {
     this.player.stats.defense = this.armor?.defense ?? 0;
-    this.player.model.setArmor?.(this.state.upgrades.armor ?? null);
+    this.player.model.setArmor(this.state.upgrades.armor ?? null);
   }
 
   /** Barınak/yatak: bulunduğun adanın doğma noktası. */
@@ -891,7 +891,7 @@ export class Game {
       r: p.running ? 1 : 0, g: p.grounded ? 1 : 0, w: p.swimming ? 1 : 0,
       sit: m ? 1 : 0, row: m?.type === 'raft' ? r2(Math.abs(m.speed)) : 0, st: m?.type === 'boat' ? 1 : 0,
       a: a?.type ?? 0, k: a ? r2(a.t / a.dur) : 0, h: p.model.heldKey ?? 0,
-      c: this.world.inCave ? 1 : 0, gh: p.ghost ? 1 : 0, bp: p.model.backpack.visible ? 1 : 0,
+      c: this.world.inCave ? 1 : 0, gh: p.ghost ? 1 : 0, bp: p.model.backpack.visible ? 1 : 0, ar: p.model.armorId ?? 0,
       sl: this.state.mode === 'sleeping' && this.pendingRest ? 1 : 0,
       m: m ? [m.uid, r2(m.x), r2(m.z), r2(m.yaw), r2(m.speed)] : 0,
     };

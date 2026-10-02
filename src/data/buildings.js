@@ -67,6 +67,17 @@ export const BUILDINGS = {
     station: 'workbench',
     interact: { action: 'Kullan', panel: 'crafting', station: 'workbench' },
   },
+  furnace: {
+    name: 'Fırın', icon: '🔥', category: 'crafting',
+    desc: 'Kumtaşından eritme ocağı ve örs. Cevherleri külçeye çevirir, bakır ve obsidyen silahlar döver. Yanında ısınabilirsin.',
+    cost: { stone: 16, sandstone: 12, wood: 6 },
+    bounds: [-1.0, 1.55, -0.95, 1.0], maxSlope: 0.6, xp: 80,
+    colliders: [{ type: 'circle', x: 0, z: 0, r: 0.9 }, { type: 'circle', x: 1.15, z: 0.1, r: 0.3 }],
+    station: 'furnace',
+    lamp: { color: '#ff7a2a', intensity: 7, distance: 11, y: 0.9, flicker: true, noGlow: true },
+    warm: true,
+    interact: { action: 'Kullan', panel: 'crafting', station: 'furnace' },
+  },
   crystal_lamp: {
     name: 'Kristal Fener', icon: '🏮', category: 'base',
     desc: 'Mağara kristaliyle parlayan, hiç sönmeyen bir fener. Üssünü geceleri aydınlatır.',
@@ -152,4 +163,4 @@ for (const [id, def] of Object.entries(BUILDINGS)) {
   def.icon = `{b:${id}}`;
 }
 
-export const BUILD_ORDER = ['campfire', 'bed', 'chest', 'workbench', 'crystal_lamp', 'hut', 'gazebo', 'cabin', 'stone_house'];
+export const BUILD_ORDER = ['campfire', 'bed', 'chest', 'workbench', 'furnace', 'crystal_lamp', 'hut', 'gazebo', 'cabin', 'stone_house'];

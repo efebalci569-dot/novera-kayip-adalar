@@ -1364,8 +1364,36 @@ function workbench() {
   return merge(parts);
 }
 
+/** Fırın: kumtaşı kubbeli eritme ocağı, baca ve yanında örs. */
+function furnace() {
+  const parts = [];
+  // taban ve kubbe
+  parts.push(part(new THREE.CylinderGeometry(0.85, 0.95, 0.35, 10), '#a88a66', { y: 0.17, seed: 3100, shade: 0.06, jitter: 0.02 }));
+  const dome = new THREE.SphereGeometry(0.8, 10, 7, 0, Math.PI * 2, 0, Math.PI / 2);
+  dome.scale(1, 1.25, 1);
+  parts.push(part(dome, '#c99a68', { y: 0.33, seed: 3101, shade: 0.08, jitter: 0.03 }));
+  // taş kuşaklar
+  parts.push(part(new THREE.TorusGeometry(0.82, 0.07, 5, 14), '#8d7458', { y: 0.42, rx: Math.PI / 2, seed: 3102 }));
+  parts.push(part(new THREE.TorusGeometry(0.62, 0.06, 5, 12), '#8d7458', { y: 0.86, rx: Math.PI / 2, seed: 3103 }));
+  // ağız: kızgın kor ve kemer
+  parts.push(part(new THREE.BoxGeometry(0.62, 0.48, 0.2), '#2a1a14', { y: 0.58, z: 0.66, seed: 3104 }));
+  parts.push(part(new THREE.BoxGeometry(0.48, 0.3, 0.06), '#ff7a2a', { y: 0.52, z: 0.75, seed: 3105 }));
+  parts.push(part(new THREE.BoxGeometry(0.34, 0.12, 0.05), '#ffd27a', { y: 0.45, z: 0.79, seed: 3106 }));
+  parts.push(part(new THREE.TorusGeometry(0.34, 0.07, 4, 8, Math.PI), '#7d6650', { y: 0.82, z: 0.72, seed: 3107 }));
+  // baca
+  parts.push(part(new THREE.CylinderGeometry(0.17, 0.22, 0.75, 7), '#8a7a6a', { x: -0.22, y: 1.55, z: -0.2, seed: 3108, shade: 0.06 }));
+  parts.push(part(new THREE.CylinderGeometry(0.22, 0.2, 0.1, 7), '#6e6056', { x: -0.22, y: 1.95, z: -0.2, seed: 3109 }));
+  // örs ve kütük
+  parts.push(part(new THREE.CylinderGeometry(0.22, 0.26, 0.5, 8), '#6e4f36', { x: 1.15, y: 0.25, z: 0.1, seed: 3110 }));
+  parts.push(part(new THREE.BoxGeometry(0.5, 0.18, 0.22), '#55585e', { x: 1.15, y: 0.58, z: 0.1, seed: 3111, shade: 0.1 }));
+  parts.push(part(new THREE.ConeGeometry(0.11, 0.26, 4), '#55585e', { x: 1.47, y: 0.6, z: 0.1, rz: Math.PI / 2, seed: 3112 }));
+  parts.push(part(new THREE.BoxGeometry(0.06, 0.06, 0.3), '#6b4c30', { x: 1.05, y: 0.7, z: 0.2, ry: 0.5, seed: 3113 }));
+  parts.push(part(new THREE.BoxGeometry(0.12, 0.08, 0.1), '#8d8a84', { x: 1.0, y: 0.72, z: 0.32, ry: 0.5, seed: 3114 }));
+  return merge(parts);
+}
+
 const BUILDING_BUILDERS = {
-  campfire, hut, chest, workbench, bed, gazebo, cabin, stone_house: stoneHouse, crystal_lamp: crystalLamp,
+  campfire, hut, chest, workbench, bed, gazebo, cabin, stone_house: stoneHouse, crystal_lamp: crystalLamp, furnace,
   raft: raftModel, boat: boatModel,
 };
 

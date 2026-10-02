@@ -457,10 +457,12 @@ export class BuildingSystem {
     }
     if (def.lamp) {
       const L = def.lamp;
-      b.light = g.world.lights.add({ x, y: y + L.y, z, color: L.color, intensity: L.intensity, distance: L.distance, flicker: false, priority: 1 });
-      b.glow = this.createCrystalGlow();
-      b.glow.position.set(x, y + L.y + 0.1, z);
-      g.world.buildingsGroup.add(b.glow);
+      b.light = g.world.lights.add({ x, y: y + L.y, z, color: L.color, intensity: L.intensity, distance: L.distance, flicker: !!L.flicker, priority: 1 });
+      if (!L.noGlow) {
+        b.glow = this.createCrystalGlow();
+        b.glow.position.set(x, y + L.y + 0.1, z);
+        g.world.buildingsGroup.add(b.glow);
+      }
     }
     if (def.interact) {
       b.interactable = g.world.addInteractable({
@@ -589,7 +591,7 @@ export class BuildingSystem {
 
   nearestFire(pos) {
     let best = Infinity;
-    for (const b of this.buildings) if (b.flame) best = Math.min(best, Math.hypot(b.x - pos.x, b.z - pos.z));
+    for (const b of this.buildings) if (b.flame || BUILDINGS[b.type].warm) best = Math.min(best, Math.hypot(b.x - pos.x, b.z - pos.z));
     return best;
   }
 

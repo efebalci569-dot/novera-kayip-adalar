@@ -328,7 +328,8 @@ export class HUD {
     bus.on('build:mode', () => this.renderHints());
     bus.on('chapter:completed', ({ chapter }) => {
       if (chapter === 1) this.banner('Bölüm 1 Tamamlandı', 'Adanın Sırrı', 'Sırada: dağın altındaki mağara ve demir…', 7);
-      else this.banner(`Bölüm ${chapter} Tamamlandı`, 'Derinliklerin Sesi', 'Devamı yakında: fırın, demir çağı ve yeni adalar…', 7);
+      else if (chapter === 2) this.banner('Bölüm 2 Tamamlandı', 'Derinliklerin Sesi', 'Sırada: ormandaki Kadim Sunak ve denizin ötesindeki kayıp adalar…', 7);
+      else this.banner(`Bölüm ${chapter} Tamamlandı`, 'Kayıp Adalar', 'Takımadanın dört muhafızı da yenildi. Tebrikler, kazazede!', 8);
     });
     bus.on('perk:points', () => this.updateRight());
     bus.on('ambience:creature', () => {
@@ -646,7 +647,7 @@ export class HUD {
         return;
       }
       const d = Math.hypot(mk.x - p.x, mk.z - p.z);
-      if (d < 3.5 || d > 220) {
+      if (d < 3.5 || d > (mk.far ? 2500 : 220)) {
         el.classList.add('hidden');
         return;
       }

@@ -142,6 +142,35 @@ const BEARD_BUILDERS = {
   },
 };
 
+// ── Zırhlar (gövdenin üzerine giyilir) ──────────────────────
+const ARMOR_STYLES = {
+  chitin_armor: { a: '#6b4430', b: '#9a6a44', trim: '#3a2418' },
+  fur_coat: { a: '#ddd5c5', b: '#bfb29b', trim: '#8a7a64', fur: true },
+  ember_armor: { a: '#221b2c', b: '#3a2e48', trim: '#ff5a1f', glow: true },
+};
+
+function buildArmorGeometry(id, female) {
+  const st = ARMOR_STYLES[id];
+  if (!st) return null;
+  const L = [];
+  const tw = female ? 0.44 : 0.5;
+  B(L, tw + 0.04, 0.42, 0.31, st.a, 0, 0.45, 0); // göğüs
+  for (let i = 0; i < 3; i++) B(L, tw + 0.05, 0.035, 0.32, st.trim, 0, 0.29 + i * 0.11, 0);
+  for (const sx of [-1, 1]) {
+    B(L, 0.2, 0.09, 0.33, st.b, sx * (tw / 2 + 0.04), 0.65, 0, { rz: sx * -0.3 }); // omuzluk
+    B(L, 0.16, 0.06, 0.3, st.trim, sx * (tw / 2 + 0.06), 0.6, 0, { rz: sx * -0.3 });
+  }
+  if (st.fur) {
+    B(L, tw * 0.92, 0.11, 0.35, st.a, 0, 0.69, 0); // kürk yaka
+    B(L, tw + 0.08, 0.1, 0.34, st.b, 0, 0.21, 0); // etek
+  }
+  if (st.glow) {
+    for (const sx of [-1, 1]) B(L, 0.025, 0.3, 0.006, st.trim, sx * 0.09, 0.46, 0.158);
+    B(L, 0.1, 0.1, 0.006, st.trim, 0, 0.52, 0.158, { rz: Math.PI / 4 });
+  }
+  return merge(L);
+}
+
 /** Görünüme göre her kemik grubunun birleştirilmiş geometrisi. */
 function buildCharacterGeometry(app) {
   const female = app.gender === 'female';
@@ -310,6 +339,24 @@ export class PlayerModel {
     const sx = female ? 0.3 : 0.34;
     this.armL.position.set(-sx, 0.6, 0);
     this.armR.position.set(sx, 0.6, 0);
+    if (this.armorId) this.setArmor(this.armorId, true);
+  }
+
+  /** Giyilen zırh (eşya kimliği ya da null). */
+  setArmor(id, force = false) {
+    id = id || null;
+    if (id === this.armorId && !force) return;
+    this.armorId = id;
+    if (this.armorMesh) {
+      this.torso.remove(this.armorMesh);
+      this.armorMesh.geometry.dispose();
+      this.armorMesh = null;
+    }
+    const geo = id && buildArmorGeometry(id, this.appearance.gender === 'female');
+    if (!geo) return;
+    this.armorMesh = new THREE.Mesh(geo, this.material);
+    this.armorMesh.castShadow = true;
+    this.torso.add(this.armorMesh);
   }
 
   setHeld(key) {

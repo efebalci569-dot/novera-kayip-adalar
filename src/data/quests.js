@@ -15,10 +15,14 @@
 //   level / day { amount }              → seviye / hayatta kalınan gün
 //   kill / butcher { animal?, amount }  → hayvan avla / bıçakla parçala
 //   sail { amount }                     → sal/tekneyle gidilen mesafe (m)
+//   island { island }                   → bir adaya ayak bas
+//   slay { enemy?, island?, amount }    → saldırgan canlı öldür
+//   boss { boss }                       → ada muhafızını yen
 //
 // marker: hedefin pusula ve ekranda gösterilmesi
 //   { resource: 'fiber_bush' } en yakın kaynak | { landmark: 'wreck' } | { landmarks: [...] } | { region: 'lake' }
 //   { animal: 'sheep' } en yakın hayvan (animal: true → herhangi biri)
+//   { island: 'desert' } adanın varış sahili | { enemy: 'scorpion' } en yakın düşman (enemy: true → herhangi biri)
 //
 // rewards: { xp, items, recipes, buildings, features, perkPoints, lore }
 
@@ -246,9 +250,162 @@ export const QUESTS = {
     hint: 'Mağaranın doğu odasındaki madenci kampını bul ve defteri oku.',
     objectives: [{ type: 'interact', target: 'miner_camp', label: 'Madencinin defterini oku' }],
     marker: { landmark: 'miner_camp' },
-    rewards: { xp: 220, perkPoints: 1 },
-    next: [],
+    rewards: { xp: 220, perkPoints: 1, recipes: ['forest_heart'] },
+    next: ['q_forest_heart'],
     chapterEnd: 2,
+  },
+
+  // ── Bölüm 3: Kayıp Adalar ───────────────────────────────
+  q_forest_heart: {
+    type: 'main', title: 'Orman Kalbi',
+    desc: 'Madencinin defteri ormandaki Kadim Sunak\'tan bahsediyor: "Muhafızı uyandıran, denizin ötesindeki yolu bulur." Sunağı uyandırmak için kristalle sarmaşığı birleştiren bir tohum gerek.',
+    hint: 'Mağaradan kristal, ormandan sarmaşık topla. Çalışma Masası\'nda Orman Kalbi üret.',
+    objectives: [
+      { type: 'collect', item: 'crystal', amount: 3, label: 'Kristal topla', marker: { resource: 'crystal_node' } },
+      { type: 'collect', item: 'vine', amount: 4, label: 'Sarmaşık topla', marker: { resource: 'vine_tangle' } },
+      { type: 'craft', item: 'forest_heart', amount: 1, label: 'Orman Kalbi üret' },
+    ],
+    rewards: { xp: 150 },
+    next: ['q_guardian'],
+  },
+  q_guardian: {
+    type: 'main', title: 'Ormanın Muhafızı',
+    desc: 'Ormanın batısında, dikili taşların ortasında kökleri sarılmış bir sunak var. Orman Kalbi\'ni oraya koyduğunda adanın kadim muhafızı uyanacak.',
+    hint: 'Sunağa Orman Kalbi\'ni koy [E]. Yerdeki kırmızı halkalardan uzak dur — dolduğunda vuruş gelir! Mızrak ya da bıçakla saldır.',
+    objectives: [
+      { type: 'discover', landmark: 'guardian_altar', label: 'Kadim Sunak\'ı bul' },
+      { type: 'boss', boss: 'guardian', label: 'Orman Muhafızı\'nı yen' },
+    ],
+    marker: { landmark: 'guardian_altar' },
+    rewards: { xp: 200, buildings: ['furnace'] },
+    next: ['q_sail_desert'],
+    side: ['s_boatwright'],
+  },
+  q_sail_desert: {
+    type: 'main', title: 'Altın Kumlar',
+    desc: 'Muhafızın kalbinden çıkan seyir haritası güneybatıdaki bir adayı gösteriyor. Sal oraya dayanmaz — yelkenli bir tekne gerek.',
+    hint: 'Tekne üret (Seviye 8, Çalışma Masası), suya indir ve pusuladaki işareti izle. Açık denizde rüzgâr tekneyi hızlandırır.',
+    objectives: [{ type: 'island', island: 'desert', label: 'Çöl Adası\'na ulaş' }],
+    marker: { island: 'desert' },
+    rewards: { xp: 200, recipes: ['copper_ingot', 'copper_pickaxe', 'copper_scimitar'] },
+    next: ['q_furnace'],
+    side: ['s_scorpions', 's_oasis'],
+  },
+  q_furnace: {
+    type: 'main', title: 'Ateş ve Bakır',
+    desc: 'Kumtaşı kayalıklarda yeşil damarlı bakır cevheri var. Bir fırın kurup eritirsen gerçek metal aletler yapabilirsin.',
+    hint: 'Kumtaşı ve bakır cevheri kaz. [B] ile Fırın kur, sonra fırında Bakır Külçe erit.',
+    objectives: [
+      { type: 'collect', item: 'sandstone', amount: 12, label: 'Kumtaşı topla', marker: { resource: 'sandstone_rock' } },
+      { type: 'build', building: 'furnace', amount: 1, label: 'Fırın kur' },
+      { type: 'collect', item: 'copper_ore', amount: 6, label: 'Bakır cevheri topla', marker: { resource: 'copper_rock' } },
+      { type: 'craft', item: 'copper_ingot', amount: 3, label: 'Bakır Külçe erit' },
+    ],
+    rewards: { xp: 220, recipes: ['chitin_armor'] },
+    next: ['q_scimitar'],
+  },
+  q_scimitar: {
+    type: 'main', title: 'Çölün Kılıcı',
+    desc: 'Kum tepelerinde dolaşan akrepler ve sırtlanlar taş mızrakla baş edilecek gibi değil. Bakır bir pala dövmenin zamanı.',
+    hint: 'Fırında Bakır Pala üret. Akrepler zehirler — vurmadan önce kuyruklarını kaldırırlar, o an geri çekil.',
+    objectives: [
+      { type: 'craft', item: 'copper_scimitar', amount: 1, label: 'Bakır Pala üret' },
+      { type: 'slay', enemy: 'scorpion', amount: 3, label: 'Çöl akrebi öldür', marker: { enemy: 'scorpion' } },
+    ],
+    rewards: { xp: 260, recipes: ['scorpion_sigil'] },
+    next: ['q_sand_king'],
+  },
+  q_sand_king: {
+    type: 'main', title: 'Kum Kralı',
+    desc: 'Tapınağın sunağında akrep oymaları var. Akrep iğnesi ve bakırla bir mühür yapıp sunağa koyarsan tapınağın sahibi uyanacak.',
+    hint: 'Fırında Akrep Mührü üret ve Kum Tapınağı\'ndaki sunağa koy. Kum Kralı kuma dalar — ayağının altındaki halkaya dikkat!',
+    objectives: [
+      { type: 'craft', item: 'scorpion_sigil', amount: 1, label: 'Akrep Mührü üret' },
+      { type: 'discover', landmark: 'sand_temple', label: 'Kum Tapınağı\'nı bul' },
+      { type: 'boss', boss: 'sand_king', label: 'Kum Kralı\'nı yen' },
+    ],
+    marker: { landmark: 'sand_temple' },
+    rewards: { xp: 300, recipes: ['fur_coat', 'iron_ingot'] },
+    next: ['q_sail_ice'],
+  },
+  q_sail_ice: {
+    type: 'main', title: 'Buzların Ötesi',
+    desc: 'Kum Kralı\'nın tacındaki harita kuzeybatıda, buzlarla kaplı bir adayı gösteriyor. Oranın soğuğu öldürücü olabilir.',
+    hint: 'Yanına odun ve taş al: buz adasında ateşin yanından ayrılma. Kürk Mont seni soğuktan korur.',
+    objectives: [{ type: 'island', island: 'ice', label: 'Buz Adası\'na ulaş' }],
+    marker: { island: 'ice' },
+    rewards: { xp: 250 },
+    next: ['q_fur'],
+    side: ['s_wisps'],
+  },
+  q_fur: {
+    type: 'main', title: 'Kurt Kürkü',
+    desc: 'Buzulun rüzgârı iliklerine işliyor. Kar kurtlarının kalın kürkünden bir mont dikebilirsin.',
+    hint: 'Kurtlar sürü halinde gezer — tek tek çek. Kürkle Çalışma Masası\'nda Kürk Mont dik ve kuşan (sağ tık).',
+    objectives: [
+      { type: 'slay', enemy: 'wolf', amount: 3, label: 'Kar kurdu öldür', marker: { enemy: 'wolf' } },
+      { type: 'craft', item: 'fur_coat', amount: 1, label: 'Kürk Mont dik' },
+    ],
+    rewards: { xp: 280, recipes: ['frost_sword'] },
+    next: ['q_frost_sword'],
+  },
+  q_frost_sword: {
+    type: 'main', title: 'Buz Kılıcı',
+    desc: 'Donmuş kamptaki notlar, buz cinlerinin özünü demirle birleştiren bir kılıçtan bahsediyor.',
+    hint: 'Kayalıklardaki demir damarlarını kaz, fırında kömürle Demir Külçe erit. Buz cinlerinden buz özü topla.',
+    objectives: [
+      { type: 'craft', item: 'iron_ingot', amount: 4, label: 'Demir Külçe erit' },
+      { type: 'collect', item: 'frost_core', amount: 1, label: 'Buz özü topla', marker: { enemy: 'ice_wisp' } },
+      { type: 'craft', item: 'frost_sword', amount: 1, label: 'Buz Kılıcı dövün' },
+    ],
+    rewards: { xp: 320, recipes: ['frost_heart'] },
+    next: ['q_frost_giant'],
+  },
+  q_frost_giant: {
+    type: 'main', title: 'Uyuyan Dev',
+    desc: 'Buzul sunağının ardında, buzun içinde dev bir gölge yatıyor. Buz özlerinden bir kalp yaparsan uyanacak.',
+    hint: 'Buz Kalbi üret ve Buzul Sunağı\'na koy. Dev, kaya fırlatır — düştüğü yeri gösteren halkadan kaç!',
+    objectives: [
+      { type: 'craft', item: 'frost_heart', amount: 1, label: 'Buz Kalbi üret' },
+      { type: 'boss', boss: 'frost_giant', label: 'Buz Devi\'ni yen' },
+    ],
+    marker: { landmark: 'frost_altar' },
+    rewards: { xp: 380, recipes: ['obsidian_blade', 'ember_armor'] },
+    next: ['q_sail_volcano'],
+  },
+  q_sail_volcano: {
+    type: 'main', title: 'Ateş Dağı',
+    desc: 'Devin göğsündeki buzda donmuş harita, kuzeydoğuda dumanı tüten bir volkanı gösteriyor. Takımadanın son sırrı orada.',
+    hint: 'Lav nehirlerine basma! Volkanda çok çabuk susarsın — yanına su ve meyve al.',
+    objectives: [{ type: 'island', island: 'volcano', label: 'Volkan Adası\'na ulaş' }],
+    marker: { island: 'volcano' },
+    rewards: { xp: 300 },
+    next: ['q_obsidian'],
+    side: ['s_ember'],
+  },
+  q_obsidian: {
+    type: 'main', title: 'Obsidyen',
+    desc: 'Lavın soğuduğu yerlerde cam gibi siyah taşlar var. Ancak bakır bir kazma onları kırabilir.',
+    hint: 'Bakır Kazma ile obsidyen kaz. Ateş kertenkelelerinden pul, lav balçıklarından magma çekirdeği topla.',
+    objectives: [
+      { type: 'collect', item: 'obsidian', amount: 8, label: 'Obsidyen kaz', marker: { resource: 'obsidian_rock' } },
+      { type: 'craft', item: 'obsidian_blade', amount: 1, label: 'Obsidyen Kılıç dövün' },
+    ],
+    rewards: { xp: 400, recipes: ['fire_sigil'] },
+    next: ['q_lava_golem'],
+  },
+  q_lava_golem: {
+    type: 'main', title: 'Volkanın Kalbi',
+    desc: 'Krater yamacındaki sunak, takımadanın son muhafızını bekliyor. Bu savaşı kazanırsan Kayıp Adalar\'ın sırrı çözülecek.',
+    hint: 'Fırında Ateş Mührü üret ve Ateş Sunağı\'na koy. Gökten yağan ateşi gösteren halkalardan ve lav birikintilerinden uzak dur.',
+    objectives: [
+      { type: 'craft', item: 'fire_sigil', amount: 1, label: 'Ateş Mührü üret' },
+      { type: 'boss', boss: 'lava_golem', label: 'Lav Golemi\'ni yen' },
+    ],
+    marker: { landmark: 'fire_altar' },
+    rewards: { xp: 600, perkPoints: 2 },
+    next: [],
+    chapterEnd: 3,
   },
 
   // ── Yan görevler ─────────────────────────────────────────
@@ -337,6 +494,39 @@ export const QUESTS = {
     desc: 'Mağaranın kristalleri hiç sönmüyor. Bir fener yapsan üssün geceleri de aydınlık olur.',
     objectives: [{ type: 'collect', item: 'crystal', amount: 2, label: 'Kristal topla', marker: { resource: 'crystal_node' } }],
     rewards: { xp: 120 },
+  },
+  s_boatwright: {
+    type: 'side', title: 'Gemi Ustası',
+    desc: 'Denizin ötesine geçmek için sağlam bir tekne gerekecek.',
+    objectives: [{ type: 'craft', item: 'boat', amount: 1, label: 'Tekne üret (Seviye 8)' }],
+    rewards: { xp: 150 },
+  },
+  s_scorpions: {
+    type: 'side', title: 'Çöl Avcısı',
+    desc: 'Çölün yırtıcıları kervan yolunu tehdit ediyor.',
+    objectives: [{ type: 'slay', island: 'desert', amount: 8, label: 'Çöl canlısı öldür', marker: { enemy: true } }],
+    rewards: { xp: 250, perkPoints: 1 },
+  },
+  s_oasis: {
+    type: 'side', title: 'Serap Değil',
+    desc: 'Kumların ortasında palmiyeler… gerçek bir vaha olabilir mi?',
+    objectives: [
+      { type: 'region', region: 'd_oasis', label: 'Vahayı bul' },
+      { type: 'drink', amount: 1, label: 'Vahadan su iç' },
+    ],
+    rewards: { xp: 120, items: { cactus_fruit: 4 } },
+  },
+  s_wisps: {
+    type: 'side', title: 'Soğuk Işıklar',
+    desc: 'Buzulun tepelerinde süzülen soluk ışıklar yolcuları dondururmuş.',
+    objectives: [{ type: 'slay', enemy: 'ice_wisp', amount: 4, label: 'Buz cini söndür', marker: { enemy: 'ice_wisp' } }],
+    rewards: { xp: 300, perkPoints: 1 },
+  },
+  s_ember: {
+    type: 'side', title: 'Ateşe Dayanıklı',
+    desc: 'Volkanın sıcağına ancak ateş pullu bir zırh dayanır.',
+    objectives: [{ type: 'craft', item: 'ember_armor', amount: 1, label: 'Ateş Zırhı üret' }],
+    rewards: { xp: 300 },
   },
   s_backpack: {
     type: 'side', title: 'Daha Fazla Yer',
