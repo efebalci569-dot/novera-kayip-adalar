@@ -8,22 +8,6 @@ const PRESETS = {
   dust: { colors: ['#d8c9a3', '#c2b48a', '#e6dcc0'], count: 18, speed: 2.4, size: 0.14, life: 1.0, gravity: 1.5 },
   spark: { colors: ['#ffd27a', '#ff9a3d', '#fff1b8'], count: 10, speed: 2.5, size: 0.06, life: 0.9, gravity: -1.5 },
   magic: { colors: ['#7ff3ff', '#b6fbff', '#5fd0ff'], count: 26, speed: 2.0, size: 0.08, life: 1.6, gravity: -1.2 },
-  pine: { colors: ['#2e6b3c', '#3c7d48', '#24572f'], count: 7, speed: 1.6, size: 0.06, life: 1.6, gravity: 2.5 },
-  coal: { colors: ['#1e1e22', '#3a3a40', '#55555c'], count: 9, speed: 3.4, size: 0.06, life: 0.8, gravity: 14 },
-  iron: { colors: ['#b0612c', '#8a4a26', '#7d786f'], count: 9, speed: 3.4, size: 0.06, life: 0.8, gravity: 14 },
-  feather: { colors: ['#ffffff', '#f3efe4', '#e6dfd0'], count: 10, speed: 2.2, size: 0.07, life: 2.2, gravity: 1.2 },
-  wool: { colors: ['#f4f0e6', '#e8e1d2', '#ffffff'], count: 9, speed: 1.8, size: 0.11, life: 1.6, gravity: 2.5 },
-  hit: { colors: ['#e6d8c4', '#cdbba2', '#f0e6d6'], count: 8, speed: 2.4, size: 0.08, life: 0.7, gravity: 6 },
-  sand: { colors: ['#e2b47a', '#d9a86c', '#f0d6a0'], count: 10, speed: 3.0, size: 0.06, life: 0.8, gravity: 12 },
-  ice: { colors: ['#cdeeff', '#ffffff', '#9fd8ff'], count: 11, speed: 3.4, size: 0.06, life: 0.9, gravity: 12 },
-  snow: { colors: ['#ffffff', '#eef6fb', '#dbe9f4'], count: 9, speed: 1.6, size: 0.07, life: 1.6, gravity: 2.2 },
-  ash: { colors: ['#6d6863', '#3a3534', '#8f8a86'], count: 9, speed: 1.8, size: 0.07, life: 1.6, gravity: 2.0 },
-  obsidian: { colors: ['#1c1726', '#4b3a66', '#2a2236'], count: 10, speed: 3.6, size: 0.06, life: 0.8, gravity: 14 },
-  sulfur: { colors: ['#e8d23a', '#f2e05a', '#c9b23a'], count: 9, speed: 3.0, size: 0.06, life: 0.8, gravity: 12 },
-  fire: { colors: ['#ffb347', '#ff6a1f', '#ffd27a'], count: 14, speed: 2.8, size: 0.09, life: 0.8, gravity: -2.5 },
-  chitin: { colors: ['#4a3a2e', '#6a4f38', '#2e231b'], count: 10, speed: 3.0, size: 0.07, life: 0.8, gravity: 11 },
-  frost: { colors: ['#bfeaff', '#ffffff', '#7fdcff'], count: 16, speed: 2.6, size: 0.08, life: 1.0, gravity: 3 },
-  blood: { colors: ['#8a2a2a', '#a33a2e', '#6e1f1f'], count: 8, speed: 2.4, size: 0.06, life: 0.7, gravity: 10 },
 };
 
 const _m = new THREE.Matrix4();

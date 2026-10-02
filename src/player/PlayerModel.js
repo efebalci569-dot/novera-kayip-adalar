@@ -1,7 +1,5 @@
 import * as THREE from 'three';
-import { sharedMaterials, part, merge } from '../world/Models.js';
-import { heldGeometry } from '../world/ItemModels.js';
-import { defaultAppearance, sanitizeAppearance } from '../data/appearance.js';
+import { buildHeldGeometry, sharedMaterials } from '../world/Models.js';
 import { clamp, lerp, damp } from '../utils/math.js';
 
 // Eldeki alet ayarları: idleArm → kolun dinlenme açısı, toolRot → aletin kola göre açısı
@@ -10,283 +8,88 @@ const HELD_POSE = {
   pickaxe: { idleArm: -0.15, toolRot: Math.PI / 2 },
   spear: { idleArm: -0.35, toolRot: Math.PI / 2 + 0.2 },
   torch: { idleArm: -0.85, toolRot: 0.85 },
-  knife: { idleArm: -0.3, toolRot: Math.PI / 2 },
-  rod: { idleArm: -0.7, toolRot: 0.9 },
-  paddle: { idleArm: -0.9, toolRot: 0.3 },
-  scimitar: { idleArm: -0.3, toolRot: Math.PI / 2 },
-  copper_pickaxe: { idleArm: -0.15, toolRot: Math.PI / 2 },
-  ice_sword: { idleArm: -0.3, toolRot: Math.PI / 2 },
-  obsidian_sword: { idleArm: -0.3, toolRot: Math.PI / 2 },
 };
-// eldeki sıradan eşyalar (odun, taş, yiyecek…): kol hafifçe öne kalkar, eşya avuçta durur
-const ITEM_POSE = { idleArm: -0.5, toolRot: 0 };
-const poseOf = (key) => HELD_POSE[key] ?? (key?.startsWith('item:') ? ITEM_POSE : null);
-const TAU = Math.PI * 2;
 
 const easeOut = (t) => 1 - (1 - t) * (1 - t);
 const easeIn = (t) => t * t;
 
-const _c1 = new THREE.Color();
-const _c2 = new THREE.Color();
-function mix(a, b, t) {
-  return '#' + _c1.set(a).lerp(_c2.set(b), t).getHexString();
-}
-function shade(color, f) {
-  _c1.set(color);
-  return '#' + _c1.setRGB(Math.min(1, _c1.r * f), Math.min(1, _c1.g * f), Math.min(1, _c1.b * f)).getHexString();
-}
-
-/** Bir parça listesine kutu ekleyen yardımcı (yerel konum + isteğe bağlı dönüş). */
-function B(list, w, h, d, color, x = 0, y = 0, z = 0, rot = {}) {
-  list.push(part(new THREE.BoxGeometry(w, h, d), color, { x, y, z, ...rot }));
-}
-
-// ── Saç modelleri (kafa grubunun yerel uzayında; kafa kutusu y 0.01–0.37, x ±0.17, z ±0.165) ──
-function hairCap(L, c, s = 1) {
-  B(L, 0.37 * s, 0.09, 0.35, c, 0, 0.395, -0.005);
-  B(L, 0.36 * s, 0.24, 0.06, c, 0, 0.28, -0.15);
-  for (const sx of [-1, 1]) B(L, 0.026, 0.13, 0.25, c, sx * 0.181 * s, 0.315, -0.035);
-}
-
-const HAIR_BUILDERS = {
-  bald() {},
-  short(L, c) {
-    hairCap(L, c);
-    B(L, 0.34, 0.05, 0.03, c, 0, 0.355, 0.165);
-  },
-  side(L, c) {
-    hairCap(L, c);
-    B(L, 0.26, 0.08, 0.33, c, 0.05, 0.45, 0.01, { rz: -0.12 });
-    B(L, 0.22, 0.06, 0.04, c, 0.06, 0.345, 0.17, { rz: 0.28 });
-  },
-  spiky(L, c) {
-    hairCap(L, c);
-    for (let i = 0; i < 9; i++) {
-      const gx = (i % 3) - 1;
-      const gz = Math.floor(i / 3) - 1;
-      L.push(part(new THREE.ConeGeometry(0.055, 0.17, 4), c, { x: gx * 0.1, y: 0.47, z: gz * 0.1 - 0.01, rx: -0.35 + gz * 0.15, rz: -gx * 0.3, ry: 0.785 }));
-    }
-  },
-  curly(L, c) {
-    hairCap(L, c, 1.02);
-    const pts = [[0, 0.45, 0.06], [-0.11, 0.44, 0.02], [0.11, 0.44, 0.02], [0, 0.46, -0.08], [-0.12, 0.42, -0.11], [0.12, 0.42, -0.11],
-      [-0.17, 0.35, 0.07], [0.17, 0.35, 0.07], [-0.18, 0.3, -0.06], [0.18, 0.3, -0.06], [0, 0.36, -0.17], [-0.1, 0.27, -0.17], [0.1, 0.27, -0.17], [0.06, 0.4, 0.14], [-0.06, 0.4, 0.14]];
-    pts.forEach(([x, y, z], i) => L.push(part(new THREE.IcosahedronGeometry(0.075, 0), c, { x, y, z, seed: 40 + i })));
-  },
-  afro(L, c) {
-    L.push(part(new THREE.IcosahedronGeometry(0.28, 1), c, { y: 0.38, z: -0.04, sy: 0.82, sz: 0.95, jitter: 0.015, seed: 61 }));
-    B(L, 0.36, 0.05, 0.03, c, 0, 0.35, 0.168);
-  },
-  mohawk(L, c) {
-    B(L, 0.08, 0.15, 0.36, c, 0, 0.44, -0.01);
-    B(L, 0.08, 0.2, 0.07, c, 0, 0.3, -0.18);
-    for (let i = 0; i < 4; i++) L.push(part(new THREE.ConeGeometry(0.045, 0.12, 4), c, { y: 0.54, z: 0.12 - i * 0.1, rx: -0.4 }));
-    for (const sx of [-1, 1]) B(L, 0.012, 0.1, 0.24, shade(c, 0.85), sx * 0.172, 0.33, -0.03);
-  },
-  long(L, c) {
-    hairCap(L, c, 1.03);
-    B(L, 0.39, 0.55, 0.07, c, 0, 0.11, -0.175);
-    for (const sx of [-1, 1]) B(L, 0.06, 0.44, 0.13, c, sx * 0.19, 0.16, 0.04);
-    B(L, 0.36, 0.06, 0.04, c, 0, 0.35, 0.168);
-  },
-  ponytail(L, c) {
-    hairCap(L, c);
-    B(L, 0.34, 0.05, 0.03, c, 0, 0.355, 0.165);
-    B(L, 0.08, 0.08, 0.06, '#7a3a3a', 0, 0.3, -0.2);
-    B(L, 0.1, 0.36, 0.09, c, 0, 0.12, -0.25, { rx: 0.22 });
-    L.push(part(new THREE.ConeGeometry(0.055, 0.12, 5), c, { y: -0.1, z: -0.3, rx: Math.PI + 0.2 }));
-  },
-  bun(L, c) {
-    hairCap(L, c);
-    B(L, 0.34, 0.05, 0.03, c, 0, 0.355, 0.165);
-    L.push(part(new THREE.IcosahedronGeometry(0.11, 1), c, { y: 0.44, z: -0.13, seed: 71 }));
-  },
-  braid(L, c) {
-    hairCap(L, c);
-    B(L, 0.34, 0.05, 0.03, c, 0, 0.355, 0.165);
-    for (let i = 0; i < 6; i++) B(L, 0.085, 0.085, 0.085, i % 2 ? shade(c, 0.88) : c, 0, 0.2 - i * 0.085, -0.2 - i * 0.012, { rz: 0.785 });
-  },
-  bob(L, c) {
-    hairCap(L, c, 1.04);
-    B(L, 0.4, 0.3, 0.08, c, 0, 0.22, -0.17);
-    for (const sx of [-1, 1]) B(L, 0.06, 0.3, 0.2, c, sx * 0.195, 0.22, -0.01);
-    B(L, 0.37, 0.08, 0.04, c, 0, 0.34, 0.168);
-  },
-};
-
-// ── Sakallar (ağız y≈0.09, ön yüz z≈0.165) ──
-const BEARD_BUILDERS = {
-  none() {},
-  stubble(L, c) {
-    B(L, 0.3, 0.11, 0.012, c, 0, 0.07, 0.168);
-    for (const sx of [-1, 1]) B(L, 0.012, 0.14, 0.22, c, sx * 0.172, 0.1, 0.04);
-  },
-  mustache(L, c) {
-    B(L, 0.15, 0.035, 0.03, c, 0, 0.125, 0.175);
-    for (const sx of [-1, 1]) B(L, 0.03, 0.05, 0.025, c, sx * 0.07, 0.1, 0.175);
-  },
-  goatee(L, c) {
-    BEARD_BUILDERS.mustache(L, c);
-    B(L, 0.1, 0.1, 0.05, c, 0, 0.03, 0.16);
-  },
-  full(L, c) {
-    B(L, 0.35, 0.15, 0.05, c, 0, 0.06, 0.155);
-    for (const sx of [-1, 1]) B(L, 0.04, 0.2, 0.25, c, sx * 0.17, 0.1, 0.03);
-    B(L, 0.3, 0.05, 0.25, c, 0, -0.01, 0.05);
-    B(L, 0.16, 0.035, 0.035, shade(c, 1.1), 0, 0.125, 0.18);
-  },
-  long(L, c) {
-    BEARD_BUILDERS.full(L, c);
-    B(L, 0.28, 0.22, 0.08, c, 0, -0.09, 0.14);
-    B(L, 0.17, 0.09, 0.06, c, 0, -0.23, 0.13);
-  },
-};
-
-// ── Zırhlar (gövdenin üzerine giyilir) ──────────────────────
-const ARMOR_STYLES = {
-  chitin_armor: { a: '#6b4430', b: '#9a6a44', trim: '#3a2418' },
-  fur_coat: { a: '#ddd5c5', b: '#bfb29b', trim: '#8a7a64', fur: true },
-  ember_armor: { a: '#221b2c', b: '#3a2e48', trim: '#ff5a1f', glow: true },
-};
-
-function buildArmorGeometry(id, female) {
-  const st = ARMOR_STYLES[id];
-  if (!st) return null;
-  const L = [];
-  const tw = female ? 0.44 : 0.5;
-  B(L, tw + 0.04, 0.42, 0.31, st.a, 0, 0.45, 0); // göğüs
-  for (let i = 0; i < 3; i++) B(L, tw + 0.05, 0.035, 0.32, st.trim, 0, 0.29 + i * 0.11, 0);
-  for (const sx of [-1, 1]) {
-    B(L, 0.2, 0.09, 0.33, st.b, sx * (tw / 2 + 0.04), 0.65, 0, { rz: sx * -0.3 }); // omuzluk
-    B(L, 0.16, 0.06, 0.3, st.trim, sx * (tw / 2 + 0.06), 0.6, 0, { rz: sx * -0.3 });
-  }
-  if (st.fur) {
-    B(L, tw * 0.92, 0.11, 0.35, st.a, 0, 0.69, 0); // kürk yaka
-    B(L, tw + 0.08, 0.1, 0.34, st.b, 0, 0.21, 0); // etek
-  }
-  if (st.glow) {
-    for (const sx of [-1, 1]) B(L, 0.025, 0.3, 0.006, st.trim, sx * 0.09, 0.46, 0.158);
-    B(L, 0.1, 0.1, 0.006, st.trim, 0, 0.52, 0.158, { rz: Math.PI / 4 });
-  }
-  return merge(L);
-}
-
-/** Görünüme göre her kemik grubunun birleştirilmiş geometrisi. */
-function buildCharacterGeometry(app) {
-  const female = app.gender === 'female';
-  const skin = app.skin;
-  const skinDark = shade(skin, 0.86);
-  const shirt = app.shirt;
-  const shirtDark = shade(shirt, 0.82);
-  const pants = app.pants;
-  const pantsDark = shade(pants, 0.8);
-  const hair = app.hairColor;
-  const g = { leg: [], torso: [], head: [], eyes: [], arm: [], backpack: [] };
-
-  // bacak (kalçadan aşağı)
-  const lw = female ? 0.19 : 0.21;
-  B(g.leg, lw, 0.44, 0.23, pants, 0, -0.2, 0);
-  B(g.leg, lw + 0.012, 0.06, 0.24, pantsDark, 0, -0.43, 0); // kıvrılmış paça
-  B(g.leg, lw - 0.05, 0.4, 0.165, skin, 0, -0.65, 0);
-  B(g.leg, lw - 0.02, 0.09, 0.28, '#5a4030', 0, -0.88, 0.04);
-  B(g.leg, lw - 0.01, 0.03, 0.29, '#3a2a20', 0, -0.92, 0.04);
-
-  // gövde (kalça orijinli)
-  const tw = female ? 0.44 : 0.5;
-  B(g.torso, female ? 0.5 : 0.48, 0.18, 0.27, pants, 0, 0.06, 0);
-  B(g.torso, tw + 0.02, 0.05, 0.29, '#6b4c30', 0, 0.16, 0); // kemer
-  B(g.torso, 0.07, 0.05, 0.02, '#c9a54c', 0.04, 0.16, 0.146);
-  B(g.torso, tw, 0.52, 0.28, shirt, 0, 0.43, 0);
-  B(g.torso, female ? 0.48 : 0.56, 0.12, 0.3, shirt, 0, 0.63, 0); // omuz hattı
-  if (female) B(g.torso, 0.38, 0.14, 0.06, shirt, 0, 0.5, 0.14, { rx: 0.1 });
-  // V yaka, yaka ve yıpranmış etek
-  B(g.torso, 0.12, 0.1, 0.02, skin, 0, 0.64, 0.146);
-  for (const sx of [-1, 1]) B(g.torso, 0.08, 0.04, 0.03, shirtDark, sx * 0.07, 0.67, 0.145, { rz: sx * 0.5 });
-  for (let i = 0; i < 5; i++) B(g.torso, 0.08, 0.04 + (i % 2) * 0.03, 0.285, i % 2 ? shirtDark : shirt, -tw / 2 + 0.05 + i * (tw - 0.1) / 4, 0.18, 0);
-  B(g.torso, 0.12, 0.1, 0.012, mix(shirt, '#d9cfb6', 0.5), 0.1, 0.33, 0.141); // yama
-  B(g.torso, 0.08, 0.04, 0.3, '#a07a4f', -0.1, 0.54, 0, { rz: 0.5 }); // askı
-  B(g.torso, 0.14, 0.08, 0.14, skin, 0, 0.71, 0); // boyun
-
-  // kafa (boyun üstü orijinli)
-  const hw = female ? 0.33 : 0.35;
-  B(g.head, hw, 0.36, 0.33, skin, 0, 0.19, 0);
-  if (!female) B(g.head, hw - 0.02, 0.06, 0.31, skin, 0, 0.03, 0.005); // çene
-  for (const sx of [-1, 1]) B(g.head, 0.035, 0.09, 0.07, skinDark, sx * (hw / 2 + 0.012), 0.2, -0.01); // kulaklar
-  B(g.head, 0.055, 0.075, 0.05, skinDark, 0, 0.165, 0.18); // burun
-  B(g.head, female ? 0.09 : 0.1, female ? 0.028 : 0.02, 0.012, female ? '#b8566a' : '#8a4a3e', 0, 0.09, 0.168); // ağız
-  for (const sx of [-1, 1]) {
-    B(g.head, 0.085, female ? 0.016 : 0.022, 0.014, shade(hair, 0.9), sx * 0.075, 0.29, 0.168, { rz: female ? -sx * 0.18 : -sx * 0.06 }); // kaşlar
-    if (female) B(g.head, 0.05, 0.03, 0.006, '#e89a9a', sx * 0.105, 0.14, 0.167); // yanak
-  }
-  (HAIR_BUILDERS[app.hairStyle] ?? HAIR_BUILDERS.short)(g.head, hair);
-  if (!female || app.beard !== 'none') {
-    const beardColor = app.beard === 'stubble' ? mix(hair, skin, 0.45) : hair;
-    (BEARD_BUILDERS[app.beard] ?? BEARD_BUILDERS.none)(g.head, beardColor);
-  }
-
-  // gözler (göz kırpma için ayrı ağ)
-  for (const sx of [-1, 1]) {
-    B(g.eyes, 0.075, 0.05, 0.012, '#f4f1ea', sx * 0.075, 0, 0);
-    B(g.eyes, 0.042, 0.046, 0.012, app.eyeColor, sx * 0.07, 0, 0.004);
-    B(g.eyes, 0.018, 0.026, 0.01, '#120c08', sx * 0.068, 0, 0.009);
-    B(g.eyes, 0.01, 0.01, 0.006, '#ffffff', sx * 0.06, 0.012, 0.013);
-    if (female) B(g.eyes, 0.085, 0.012, 0.014, '#1a120e', sx * 0.075, 0.03, 0.004, { rz: -sx * 0.12 });
-  }
-
-  // kol (omuzdan aşağı)
-  const aw = female ? 0.115 : 0.13;
-  B(g.arm, aw + 0.025, 0.24, 0.17, shirt, 0, -0.1, 0);
-  B(g.arm, aw + 0.03, 0.04, 0.175, shirtDark, 0, -0.22, 0);
-  B(g.arm, aw, 0.22, aw + 0.01, skin, 0, -0.34, 0);
-  B(g.arm, aw - 0.01, 0.2, aw, skin, 0, -0.52, 0);
-  B(g.arm, aw + 0.005, 0.12, aw + 0.01, skinDark, 0, -0.64, 0.005); // el
-
-  // sırt çantası
-  B(g.backpack, 0.4, 0.46, 0.18, '#a58a55', 0, 0.36, -0.24);
-  B(g.backpack, 0.36, 0.12, 0.2, '#8d7446', 0, 0.62, -0.24);
-  for (const sx of [-1, 1]) B(g.backpack, 0.05, 0.5, 0.04, '#6b5636', sx * 0.15, 0.42, -0.14);
-
-  const out = {};
-  for (const [k, list] of Object.entries(g)) out[k] = list.length ? merge(list) : null;
-  return out;
+function box(w, h, d, color, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color, flatShading: true }));
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  return m;
 }
 
 /**
  * Kutulardan oluşan stilize, düşük poligonlu kazazede karakteri ve
  * prosedürel animasyonları (yürüme, koşma, zıplama, yüzme, vurma, toplama…).
- * Görünüm (cinsiyet, ten, saç, sakal, göz, kıyafet) setAppearance ile değişir.
- * Her kemik grubu tek bir birleşik ağdır (karakter başına ~10 çizim çağrısı). Model +Z yönüne bakar.
+ * Model +Z yönüne bakar.
  */
 export class PlayerModel {
-  constructor(appearance = defaultAppearance('male')) {
+  constructor() {
     this.root = new THREE.Group();
     this.root.name = 'player';
     this.body = new THREE.Group();
     this.root.add(this.body);
-    // modele özel malzeme: 1. şahısta yalnızca yerel oyuncunun gövdesi gizlenir
-    this.material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 
+    const skin = '#e2ad85';
+    const shirt = '#ece5d2';
+    const shorts = '#4d6c8c';
+    const hair = '#3b2a1d';
+
+    // bacaklar (kalçadan döner)
     this.legL = new THREE.Group();
     this.legR = new THREE.Group();
-    this.legL.position.set(-0.12, 0.92, 0);
-    this.legR.position.set(0.12, 0.92, 0);
+    this.legL.position.set(-0.13, 0.92, 0);
+    this.legR.position.set(0.13, 0.92, 0);
+    for (const leg of [this.legL, this.legR]) {
+      leg.add(box(0.22, 0.42, 0.24, shorts, 0, -0.2, 0));
+      leg.add(box(0.17, 0.5, 0.19, skin, 0, -0.64, 0));
+      leg.add(box(0.18, 0.08, 0.27, '#b98563', 0, -0.88, 0.04));
+      this.body.add(leg);
+    }
+
+    // gövde
     this.torso = new THREE.Group();
     this.torso.position.y = 0.92;
+    this.body.add(this.torso);
+    this.torso.add(box(0.5, 0.18, 0.28, shorts, 0, 0.06, 0));
+    this.torso.add(box(0.52, 0.56, 0.3, shirt, 0, 0.4, 0));
+    this.torso.add(box(0.22, 0.12, 0.02, '#d9cfb6', 0.08, 0.2, 0.155)); // yırtık
+    this.torso.add(box(0.08, 0.04, 0.32, '#a07a4f', -0.1, 0.52, 0)); // askı
+
+    // kafa
     this.head = new THREE.Group();
-    this.head.position.y = 0.72;
-    this.eyes = new THREE.Group();
-    this.eyes.position.set(0, 0.235, 0.168);
-    this.head.add(this.eyes);
+    this.head.position.y = 0.7;
+    this.torso.add(this.head);
+    this.head.add(box(0.36, 0.38, 0.34, skin, 0, 0.19, 0));
+    this.head.add(box(0.39, 0.12, 0.37, hair, 0, 0.41, -0.01));
+    this.head.add(box(0.39, 0.26, 0.1, hair, 0, 0.27, -0.15));
+    this.head.add(box(0.06, 0.06, 0.02, '#2b211c', -0.08, 0.22, 0.175));
+    this.head.add(box(0.06, 0.06, 0.02, '#2b211c', 0.08, 0.22, 0.175));
+    this.head.add(box(0.12, 0.03, 0.02, '#a8664f', 0, 0.1, 0.175));
+
+    // kollar (omuzdan döner)
     this.armL = new THREE.Group();
     this.armR = new THREE.Group();
+    this.armL.position.set(-0.34, 0.6, 0);
+    this.armR.position.set(0.34, 0.6, 0);
+    for (const arm of [this.armL, this.armR]) {
+      arm.add(box(0.15, 0.28, 0.17, shirt, 0, -0.12, 0));
+      arm.add(box(0.13, 0.32, 0.14, skin, 0, -0.42, 0));
+      arm.add(box(0.13, 0.12, 0.13, skin, 0, -0.62, 0));
+      this.torso.add(arm);
+    }
     this.hand = new THREE.Group();
     this.hand.position.set(0, -0.64, 0.02);
     this.armR.add(this.hand);
+
+    // sırt çantası (geliştirmeyle görünür)
     this.backpack = new THREE.Group();
+    this.backpack.add(box(0.4, 0.46, 0.18, '#a58a55', 0, 0.36, -0.24));
+    this.backpack.add(box(0.36, 0.12, 0.2, '#8d7446', 0, 0.62, -0.24));
     this.backpack.visible = false;
-    this.torso.add(this.head, this.armL, this.armR, this.backpack);
-    this.body.add(this.legL, this.legR, this.torso);
-    this.meshes = [];
+    this.torso.add(this.backpack);
 
     // eldeki alet
     this.heldCache = {};
@@ -300,63 +103,8 @@ export class PlayerModel {
 
     this.walkPhase = 0;
     this.time = 0;
-    this.blinkTimer = 2 + Math.random() * 3;
     this.swimBlend = 0;
-    this.swimMove = 0;
-    this.swimPhase = 0;
-    this.strokeSide = 1; // son kulacın tarafı (sıçrama efekti için)
-    this.sitBlend = 0;
-    this.rowPhase = 0;
     this.airBlend = 0;
-    this.setAppearance(appearance);
-  }
-
-  /** Görünümü (yeniden) oluşturur; animasyon durumu ve eldeki alet korunur. */
-  setAppearance(appearance) {
-    this.appearance = sanitizeAppearance(appearance);
-    for (const m of this.meshes) {
-      m.parent?.remove(m);
-      m.geometry.dispose();
-    }
-    this.meshes = [];
-    const geo = buildCharacterGeometry(this.appearance);
-    const add = (group, geometry) => {
-      if (!geometry) return;
-      const m = new THREE.Mesh(geometry, this.material);
-      m.castShadow = true;
-      group.add(m);
-      this.meshes.push(m);
-    };
-    add(this.legL, geo.leg);
-    add(this.legR, geo.leg.clone());
-    add(this.torso, geo.torso);
-    add(this.head, geo.head);
-    add(this.eyes, geo.eyes);
-    add(this.armL, geo.arm);
-    add(this.armR, geo.arm.clone());
-    add(this.backpack, geo.backpack);
-    const female = this.appearance.gender === 'female';
-    const sx = female ? 0.3 : 0.34;
-    this.armL.position.set(-sx, 0.6, 0);
-    this.armR.position.set(sx, 0.6, 0);
-    if (this.armorId) this.setArmor(this.armorId, true);
-  }
-
-  /** Giyilen zırh (eşya kimliği ya da null). */
-  setArmor(id, force = false) {
-    id = id || null;
-    if (id === this.armorId && !force) return;
-    this.armorId = id;
-    if (this.armorMesh) {
-      this.torso.remove(this.armorMesh);
-      this.armorMesh.geometry.dispose();
-      this.armorMesh = null;
-    }
-    const geo = id && buildArmorGeometry(id, this.appearance.gender === 'female');
-    if (!geo) return;
-    this.armorMesh = new THREE.Mesh(geo, this.material);
-    this.armorMesh.castShadow = true;
-    this.torso.add(this.armorMesh);
   }
 
   setHeld(key) {
@@ -366,7 +114,7 @@ export class PlayerModel {
     this.heldMesh = null;
     if (!key) return;
     if (!this.heldCache[key]) {
-      const geo = heldGeometry(key);
+      const geo = buildHeldGeometry(key);
       if (!geo) return;
       const mesh = new THREE.Mesh(geo, sharedMaterials.standard);
       mesh.castShadow = true;
@@ -374,13 +122,12 @@ export class PlayerModel {
         this.flame.position.y = 0.72;
         mesh.add(this.flame);
       }
-      if (key.startsWith('item:')) mesh.position.set(0, -0.1, 0.07); // avucun içinde
       this.heldCache[key] = mesh;
     }
     this.heldMesh = this.heldCache[key];
-    this.heldMesh.rotation.x = poseOf(key)?.toolRot ?? Math.PI / 2;
+    this.heldMesh.rotation.x = HELD_POSE[key]?.toolRot ?? Math.PI / 2;
     this.flame.visible = key === 'torch';
-    this.heldMesh.visible = !this.firstPerson && !this.hideHeld;
+    this.heldMesh.visible = !this.firstPerson;
     this.hand.add(this.heldMesh);
   }
 
@@ -394,9 +141,12 @@ export class PlayerModel {
    */
   setFirstPerson(on) {
     this.firstPerson = on;
-    this.material.colorWrite = !on;
-    this.material.depthWrite = !on;
-    if (this.heldMesh) this.heldMesh.visible = !on && !this.hideHeld;
+    this.body.traverse((o) => {
+      if (!o.isMesh || o.material === sharedMaterials.standard) return;
+      o.material.colorWrite = !on;
+      o.material.depthWrite = !on;
+    });
+    if (this.heldMesh) this.heldMesh.visible = !on;
   }
 
   /**
@@ -410,16 +160,8 @@ export class PlayerModel {
     const swing = Math.sin(this.walkPhase) * moveAmp * 0.75;
 
     this.swimBlend = damp(this.swimBlend, state.swimming ? 1 : 0, 6, dt);
-    this.swimMove = damp(this.swimMove, state.swimming && speed > 0.6 ? 1 : 0, 4, dt);
-    this.sitBlend = damp(this.sitBlend, state.sitting ? 1 : 0, 8, dt);
-    this.airBlend = damp(this.airBlend, !state.grounded && !state.swimming && !state.sitting ? 1 : 0, 10, dt);
-    // yüzerken eldeki alet görünmez
-    const hide = this.swimBlend > 0.5;
-    if (hide !== this.hideHeld) {
-      this.hideHeld = hide;
-      if (this.heldMesh) this.heldMesh.visible = !this.firstPerson && !hide;
-    }
-    const pose = poseOf(this.heldKey) ?? { idleArm: 0 };
+    this.airBlend = damp(this.airBlend, !state.grounded && !state.swimming ? 1 : 0, 10, dt);
+    const pose = HELD_POSE[this.heldKey] ?? { idleArm: 0 };
 
     // temel yürüyüş
     let legL = swing;
@@ -438,73 +180,23 @@ export class PlayerModel {
     armLz = lerp(armLz, 0.45, this.airBlend);
     armRz = lerp(armRz, -0.45, this.airBlend);
 
-    // yüzme: ilerlerken serbest stil (kulaç + çarpraz ayak), dururken su sayma (kollar yanlarda süzülür)
-    let swimArmsDirect = false;
-    let bodyRoll = 0;
-    let headYaw = 0;
-    let headPitch = 0;
+    // yüzme
     if (this.swimBlend > 0.01) {
-      const mv = this.swimMove;
-      this.swimPhase += dt * lerp(2.2, 3.4 + Math.min(speed, 3) * 0.35, mv);
-      const ph = this.swimPhase;
-      // serbest stil: kollar sürekli döner (öne uzan → suyun altından çek → sudan çıkarıp öne getir)
-      const crawlL = -Math.PI + (ph % TAU);
-      const crawlR = -Math.PI + ((ph + Math.PI) % TAU);
-      this.strokeSide = (ph % TAU) < Math.PI ? -1 : 1;
-      // su sayma: kollar yanlara açık, sekiz çizerek süzülür
-      const treadArm = -0.75 + Math.sin(ph * 1.6) * 0.22;
-      const treadZ = 0.95 + Math.sin(ph * 1.6 + 1.2) * 0.3;
-      const aL = lerp(treadArm, crawlL, mv);
-      const aR = lerp(treadArm, crawlR, mv);
-      armL = lerp(armL, aL, this.swimBlend);
-      armR = lerp(armR, aR, this.swimBlend);
-      armLz = lerp(armLz, lerp(treadZ, 0.12, mv), this.swimBlend);
-      armRz = lerp(armRz, lerp(-treadZ, -0.12, mv), this.swimBlend);
-      swimArmsDirect = this.swimBlend > 0.9;
-      // ayaklar: hızlı çapraz vuruş / yavaş pedal
-      const kick = mv > 0.5 ? Math.sin(ph * 3.1) * 0.42 : Math.sin(ph * 1.6) * 0.5;
-      legL = lerp(legL, kick, this.swimBlend);
-      legR = lerp(legR, -kick, this.swimBlend);
+      const s = this.time * 4.5;
+      legL = lerp(legL, Math.sin(s * 1.6) * 0.35, this.swimBlend);
+      legR = lerp(legR, -Math.sin(s * 1.6) * 0.35, this.swimBlend);
+      armL = lerp(armL, -1.6 + Math.sin(s) * 1.1, this.swimBlend);
+      armR = lerp(armR, -1.6 - Math.sin(s) * 1.1, this.swimBlend);
       bodyX = lerp(bodyX, 0, this.swimBlend);
-      bodyY = lerp(bodyY, lerp(-1.12 + Math.sin(ph * 2) * 0.05, 0.34 + Math.sin(ph * 2) * 0.03, mv), this.swimBlend);
-      bodyRoll = Math.sin(ph) * 0.3 * mv * this.swimBlend;
-      headYaw = Math.sin(ph) * 0.45 * mv * this.swimBlend; // nefes almak için yana dönüş
-      headPitch = -0.95 * mv * this.swimBlend;
+      bodyY = lerp(bodyY, 0.15 + Math.sin(s) * 0.04, this.swimBlend);
     }
-    this.body.rotation.x = this.swimBlend * lerp(0.35, 1.38, this.swimMove);
-    this.body.rotation.z = bodyRoll;
-    this.head.rotation.y = damp(this.head.rotation.y, headYaw, 10, dt);
-
-    // oturma (sal/tekne): bacaklar öne uzanır, salda kürek çekilir
-    if (this.sitBlend > 0.01) {
-      const sb = this.sitBlend;
-      legL = lerp(legL, -1.45, sb);
-      legR = lerp(legR, -1.4, sb);
-      bodyY = lerp(bodyY, 0, sb);
-      if (state.rowing > 0.05) {
-        this.rowPhase += dt * (2.2 + state.rowing * 0.6);
-        const r = Math.sin(this.rowPhase);
-        armR = lerp(armR, -1.25 + r * 0.55, sb);
-        armL = lerp(armL, -1.1 - r * 0.45, sb);
-        armRz = lerp(armRz, -0.25, sb);
-        armLz = lerp(armLz, 0.55, sb);
-        bodyX = lerp(bodyX, 0.12 + r * 0.12, sb);
-      } else if (state.steering) {
-        armR = lerp(armR, -0.55, sb);
-        armRz = lerp(armRz, 0.1, sb);
-        armL = lerp(armL, -0.3, sb);
-      } else {
-        armL = lerp(armL, -0.35, sb);
-        armR = lerp(armR, -0.35 + (poseOf(this.heldKey)?.idleArm ?? 0) * 0.5, sb);
-      }
-    }
+    this.body.rotation.x = this.swimBlend * 1.3;
 
     // eylem animasyonları
     const act = state.action;
     let crouch = 0;
     if (act) {
       const k = act.k;
-      headPitch = 0;
       const bell = Math.sin(Math.PI * clamp(k, 0, 1));
       switch (act.type) {
         case 'swing':
@@ -527,12 +219,6 @@ export class PlayerModel {
           armL = -1.2 + Math.sin(k * 18) * 0.25 * crouch;
           armR = -1.2 - Math.sin(k * 18) * 0.25 * crouch;
           break;
-        case 'butcher':
-          // diz çök, bıçakla kes
-          crouch = Math.min(1, k * 5, (1 - k) * 5);
-          armR = -1.0 + Math.sin(k * 26) * 0.35 * crouch;
-          armL = lerp(armL, -1.2, crouch);
-          break;
         case 'eat':
           armR = lerp(armR, -2.1, bell);
           armRz = lerp(armRz, 0.55, bell);
@@ -549,7 +235,7 @@ export class PlayerModel {
           break;
       }
     } else {
-      this.head.rotation.x = damp(this.head.rotation.x, headPitch, 10, dt);
+      this.head.rotation.x = damp(this.head.rotation.x, 0, 10, dt);
     }
 
     if (crouch > 0) {
@@ -562,8 +248,8 @@ export class PlayerModel {
     const k = 18;
     this.legL.rotation.x = damp(this.legL.rotation.x, legL, k, dt);
     this.legR.rotation.x = damp(this.legR.rotation.x, legR, k, dt);
-    this.armL.rotation.x = swimArmsDirect ? armL : damp(this.armL.rotation.x, armL, act ? 30 : k, dt);
-    this.armR.rotation.x = act || swimArmsDirect ? armR : damp(this.armR.rotation.x, armR, k, dt);
+    this.armL.rotation.x = damp(this.armL.rotation.x, armL, act ? 30 : k, dt);
+    this.armR.rotation.x = act ? armR : damp(this.armR.rotation.x, armR, k, dt);
     this.armL.rotation.z = damp(this.armL.rotation.z, armLz, k, dt);
     this.armR.rotation.z = damp(this.armR.rotation.z, armRz, k, dt);
     this.body.position.y = damp(this.body.position.y, bodyY, 14, dt);
@@ -574,11 +260,6 @@ export class PlayerModel {
       const f = 1 + Math.sin(this.time * 17) * 0.12 + Math.sin(this.time * 29) * 0.08;
       this.flame.scale.set(1, f, 1);
     }
-
-    // göz kırpma
-    this.blinkTimer -= dt;
-    if (this.blinkTimer <= 0) this.blinkTimer = 2 + Math.random() * 4;
-    this.eyes.scale.y = this.blinkTimer < 0.12 || state.sleeping ? 0.12 : 1;
   }
 
   /** Meşale alevinin dünya konumu (ışık için). */

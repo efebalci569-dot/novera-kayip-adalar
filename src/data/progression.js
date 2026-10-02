@@ -16,13 +16,7 @@ export const XP_REWARDS = {
 
 // Seviye atlama ekranında gösterilecek ek mesajlar
 export const LEVEL_MESSAGES = {
-  2: 'Yetenek puanı kazandın! [K] ile yeteneklerini geliştir. Yeni: Saz Çardak, Halat',
-  3: 'Yeni: Olta, Lif Sırt Çantası',
-  4: 'Yeni: Sal — çalışma masasında üret, suya indir!',
-  5: 'Yeni barınak: Ahşap Kulübe',
-  6: 'Yeni: Kristal Fener, Dokuma Sırt Çantası',
-  8: 'Yeni: Yelkenli Tekne!',
-  9: 'Yeni barınak: Taş Ev',
+  2: 'Yetenek puanı kazandın! [K] ile yeteneklerini geliştir.',
 };
 
 export const BASE_INVENTORY_SIZE = 10;
