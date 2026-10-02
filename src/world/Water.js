@@ -29,11 +29,7 @@ const vertexShader = /* glsl */ `
 const fragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uWaveAmp;
-  uniform sampler2D uHeightTex0;
-  uniform sampler2D uHeightTex1;
-  uniform sampler2D uHeightTex2;
-  uniform sampler2D uHeightTex3;
-  uniform vec2 uCenter[4];
+  uniform sampler2D uHeightTex;
   uniform float uTerrainHalf;
   uniform float uTerrainStep;
   uniform float uTerrainN;
@@ -47,23 +43,10 @@ const fragmentShader = /* glsl */ `
   varying vec3 vWorldPos;
   #include <fog_pars_fragment>
 
-  // her adanın yükseklik dokusundan derinlik: nokta hangi adanın karesindeyse onunki
-  vec2 islandUV(vec2 p, vec2 c) {
-    return ((p - c + uTerrainHalf) / uTerrainStep + 0.5) / uTerrainN;
-  }
-  bool inside(vec2 uv) {
-    return uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0;
-  }
   float terrainHeight(vec2 p) {
-    vec2 uv = islandUV(p, uCenter[0]);
-    if (inside(uv)) return texture2D(uHeightTex0, uv).r;
-    uv = islandUV(p, uCenter[1]);
-    if (inside(uv)) return texture2D(uHeightTex1, uv).r;
-    uv = islandUV(p, uCenter[2]);
-    if (inside(uv)) return texture2D(uHeightTex2, uv).r;
-    uv = islandUV(p, uCenter[3]);
-    if (inside(uv)) return texture2D(uHeightTex3, uv).r;
-    return -14.0;
+    vec2 uv = ((p + uTerrainHalf) / uTerrainStep + 0.5) / uTerrainN;
+    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return -14.0;
+    return texture2D(uHeightTex, uv).r;
   }
 
   void main() {
@@ -109,26 +92,16 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-function createWaterMaterial(terrains, textures, { deep, shallow, waveAmp }) {
-  const t0 = terrains[0];
-  const centers = [0, 1, 2, 3].map((i) => {
-    const t = terrains[i];
-    // olmayan adalar için çok uzak bir merkez (doku asla örneklenmez)
-    return t ? new THREE.Vector2(t.cx, t.cz) : new THREE.Vector2(1e6, 1e6);
-  });
+function createWaterMaterial(terrain, heightTex, { deep, shallow, waveAmp }) {
   const uniforms = THREE.UniformsUtils.merge([
     THREE.UniformsLib.fog,
     {
       uTime: { value: 0 },
       uWaveAmp: { value: waveAmp },
-      uHeightTex0: { value: null },
-      uHeightTex1: { value: null },
-      uHeightTex2: { value: null },
-      uHeightTex3: { value: null },
-      uCenter: { value: centers },
-      uTerrainHalf: { value: t0.half },
-      uTerrainStep: { value: t0.step },
-      uTerrainN: { value: t0.n },
+      uHeightTex: { value: null },
+      uTerrainHalf: { value: terrain.half },
+      uTerrainStep: { value: terrain.step },
+      uTerrainN: { value: terrain.n },
       uDeep: { value: new THREE.Color(deep) },
       uShallow: { value: new THREE.Color(shallow) },
       uFoam: { value: new THREE.Color('#ffffff') },
@@ -138,9 +111,7 @@ function createWaterMaterial(terrains, textures, { deep, shallow, waveAmp }) {
       uLight: { value: 1 },
     },
   ]);
-  // dokular merge ile kopyalanmasın diye sonradan atanır
-  for (let i = 0; i < 4; i++) uniforms[`uHeightTex${i}`].value = textures[i] ?? textures[0];
-  uniforms.uCenter.value = centers;
+  uniforms.uHeightTex.value = heightTex;
   return new THREE.ShaderMaterial({
     uniforms,
     vertexShader,
@@ -150,62 +121,30 @@ function createWaterMaterial(terrains, textures, { deep, shallow, waveAmp }) {
   });
 }
 
-const SEA_SIZE = 2400;
-const SEA_SEGMENTS = 160;
-
-/**
- * Deniz (kamerayı takip eden büyük bir düzlem) ve adaların tatlı su gölleri.
- * Donmuş göller su değil buz olarak çizilir.
- */
 export class Water {
-  constructor(world) {
+  constructor(terrain, island) {
     this.group = new THREE.Group();
-    const terrains = world.terrains;
-    this.textures = terrains.map((t) => t.createHeightTexture());
+    this.heightTex = terrain.createHeightTexture();
 
-    const seaGeo = new THREE.PlaneGeometry(SEA_SIZE, SEA_SIZE, SEA_SEGMENTS, SEA_SEGMENTS);
+    const seaGeo = new THREE.PlaneGeometry(2400, 2400, 160, 160);
     seaGeo.rotateX(-Math.PI / 2);
-    this.seaMaterial = createWaterMaterial(terrains, this.textures, { deep: '#1a6aa6', shallow: '#3fd6cf', waveAmp: 1 });
+    this.seaMaterial = createWaterMaterial(terrain, this.heightTex, { deep: '#1a6aa6', shallow: '#3fd6cf', waveAmp: 1 });
     this.sea = new THREE.Mesh(seaGeo, this.seaMaterial);
     this.sea.position.y = WATER_LEVEL;
     this.sea.name = 'sea';
     this.sea.renderOrder = 1;
-    this.sea.frustumCulled = false;
-    this.group.add(this.sea);
-    this.materials = [this.seaMaterial];
 
-    const LAKE_COLORS = {
-      tropical: { deep: '#24708f', shallow: '#59c9b9' },
-      desert: { deep: '#167c86', shallow: '#4fe0cf' }, // vaha: berrak turkuaz
-    };
-    this.lakes = [];
-    for (const isl of world.islands) {
-      const lake = isl.lake;
-      if (!lake) continue;
-      if (lake.frozen) {
-        // donmuş göl: hafif parlak, yarı saydam buz tabakası
-        const ice = new THREE.Mesh(
-          new THREE.CircleGeometry(lake.radius * 1.12, 40).rotateX(-Math.PI / 2),
-          new THREE.MeshLambertMaterial({ color: '#d9f3ff', transparent: true, opacity: 0.45, depthWrite: false }),
-        );
-        ice.position.set(lake.x, lake.level + 0.03, lake.z);
-        ice.renderOrder = 1;
-        this.group.add(ice);
-        continue;
-      }
-      const geo = new THREE.CircleGeometry(lake.radius * 1.6, 48);
-      geo.rotateX(-Math.PI / 2);
-      const mat = createWaterMaterial(terrains, this.textures, { ...(LAKE_COLORS[isl.biome] ?? LAKE_COLORS.tropical), waveAmp: 0.18 });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(lake.x, lake.level, lake.z);
-      mesh.name = `lake:${isl.id}`;
-      mesh.renderOrder = 1;
-      this.group.add(mesh);
-      this.materials.push(mat);
-      this.lakes.push({ island: isl, mesh });
-    }
-    this.lake = this.lakes[0]?.mesh ?? null;
-    this.lakeMaterial = this.materials[1] ?? null;
+    const lake = island.lake;
+    const lakeGeo = new THREE.CircleGeometry(lake.radius * 1.6, 48);
+    lakeGeo.rotateX(-Math.PI / 2);
+    this.lakeMaterial = createWaterMaterial(terrain, this.heightTex, { deep: '#24708f', shallow: '#59c9b9', waveAmp: 0.18 });
+    this.lake = new THREE.Mesh(lakeGeo, this.lakeMaterial);
+    this.lake.position.set(lake.x, lake.level, lake.z);
+    this.lake.name = 'lake';
+    this.lake.renderOrder = 1;
+
+    this.group.add(this.sea, this.lake);
+    this.materials = [this.seaMaterial, this.lakeMaterial];
   }
 
   /** Belirli bir noktadaki su yüzeyi yüksekliği (CPU tarafı, shader ile aynı dalga). */
@@ -221,13 +160,7 @@ export class Water {
     return this.seaMaterial.uniforms.uTime.value;
   }
 
-  update(dt, env, camPos) {
-    // deniz düzlemi kamerayla birlikte kayar (ızgara adımına oturtulur, dalgalar dünya uzayında)
-    if (camPos) {
-      const cell = SEA_SIZE / SEA_SEGMENTS;
-      this.sea.position.x = Math.round(camPos.x / cell) * cell;
-      this.sea.position.z = Math.round(camPos.z / cell) * cell;
-    }
+  update(dt, env) {
     for (const m of this.materials) {
       const u = m.uniforms;
       u.uTime.value += dt;

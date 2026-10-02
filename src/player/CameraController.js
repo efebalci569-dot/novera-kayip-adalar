@@ -28,7 +28,6 @@ export class CameraController {
     this.tmp = new THREE.Vector3();
     this.orbitAngle = 0;
     this.landDip = 0;
-    this.shakeAmt = 0;
     this.eyeY = null;
   }
 
@@ -63,11 +62,6 @@ export class CameraController {
     this.landDip = Math.max(this.landDip, Math.min(0.4, strength));
   }
 
-  /** Yer sarsıntısı (boss vuruşları, uyanışlar). */
-  shake(strength) {
-    if (strength > 0) this.shakeAmt = Math.max(this.shakeAmt ?? 0, Math.min(0.6, strength));
-  }
-
   update(dt, player, inputEnabled) {
     const { input, settings } = this.game;
     const sens = 0.0022 * settings.sensitivity;
@@ -80,13 +74,6 @@ export class CameraController {
     this.landDip = damp(this.landDip, 0, 6, dt);
     if (this.firstPerson) this.updateFirstPerson(dt, player);
     else this.updateThirdPerson(dt, player, inputEnabled);
-    if (this.shakeAmt > 0.002) {
-      const s = this.shakeAmt * 0.35;
-      this.camera.position.x += (Math.random() - 0.5) * s;
-      this.camera.position.y += (Math.random() - 0.5) * s;
-      this.camera.position.z += (Math.random() - 0.5) * s;
-      this.shakeAmt = damp(this.shakeAmt, 0, 5, dt);
-    }
   }
 
   updateFirstPerson(dt, player) {
@@ -95,11 +82,9 @@ export class CameraController {
     const cam = this.camera;
     const bob = settings.headBob ? clamp(player.speed / 5, 0, 1.3) * (player.grounded ? 1 : 0) : 0;
     const phase = player.model.walkPhase;
-    // yüzerken baş su yüzeyinde dalgayla iner kalkar
-    const swimBob = player.swimming ? Math.sin(this.game.time.elapsed * 1.8) * 0.07 : 0;
-    const targetEye = p.y + (player.swimming ? 0.78 + swimBob : EYE_HEIGHT);
+    const targetEye = p.y + (player.swimming ? 0.75 : EYE_HEIGHT);
     // merdiven/eğim adımlarında göz yüksekliği yumuşakça izlesin
-    const snap = this.eyeY === null || Math.abs(targetEye - this.eyeY) > 1.5 || player.mounted; // ışınlanma/doğma/tekne
+    const snap = this.eyeY === null || Math.abs(targetEye - this.eyeY) > 1.5; // ışınlanma/doğma
     this.eyeY = snap ? targetEye : damp(this.eyeY, targetEye, 18, dt);
     const sideX = Math.cos(this.yaw);
     const sideZ = -Math.sin(this.yaw);
@@ -109,10 +94,7 @@ export class CameraController {
       this.eyeY + (Math.abs(Math.sin(phase)) - 0.5) * 0.06 * bob - this.landDip,
       p.z + sideZ * sway,
     );
-    let roll = Math.sin(phase) * 0.006 * bob;
-    if (player.swimming) roll += Math.sin(this.game.time.elapsed * 1.1) * 0.025;
-    if (player.mounted) roll += player.mounted.roll * 0.6;
-    cam.rotation.set(this.lookPitch, this.yaw, roll, 'YXZ');
+    cam.rotation.set(this.lookPitch, this.yaw, Math.sin(phase) * 0.006 * bob, 'YXZ');
     this.target.copy(cam.position);
   }
 
@@ -123,7 +105,7 @@ export class CameraController {
     }
 
     const p = player.position;
-    const headY = player.swimming ? 1.0 : player.mounted ? 1.35 : 1.55;
+    const headY = player.swimming ? 1.0 : 1.55;
     this.target.x = p.x;
     this.target.z = p.z;
     this.target.y = damp(this.target.y || p.y + headY, p.y + headY, 14, dt) - this.landDip;

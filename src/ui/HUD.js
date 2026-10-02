@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { h, kbd, renderSlot, itemChip } from './dom.js';
-import { setRich, plainText } from './rich.js';
 import { ITEMS } from '../data/items.js';
 import { QUESTS, QUEST_TYPES } from '../data/quests.js';
 import { RECIPE_MAP } from '../data/recipes.js';
@@ -49,7 +48,6 @@ export class HUD {
     this.buildRight();
     this.buildCenter();
     this.buildHotbar();
-    this.buildSocial();
     this.keyHints = h('div', { class: 'key-hints' });
     this.toasts = h('div', { class: 'toasts' });
     this.floatLayer = h('div');
@@ -64,11 +62,9 @@ export class HUD {
     this.buildHelp = h('div', { class: 'build-help hidden' });
     this.clickHint = h('div', { class: 'click-hint hidden' }, 'Fareyle bakmak için ekrana tıkla (ya da basılı tutup sürükle)');
     this.vignette = h('div', { class: 'vignette' });
-    this.hurtEl = h('div', { class: 'hurt-flash' });
-    this.frostEl = h('div', { class: 'frost-overlay' });
     this.saveIndicator = h('div', { class: 'save-indicator' }, '💾 Kaydedildi');
     this.fps = h('div', { class: 'fps hidden' });
-    this.el.append(this.vignette, this.hurtEl, this.frostEl, this.markerLayer, this.keyHints, this.toasts, this.floatLayer, this.buildHelp, this.clickHint, this.saveIndicator, this.fps);
+    this.el.append(this.vignette, this.markerLayer, this.keyHints, this.toasts, this.floatLayer, this.buildHelp, this.clickHint, this.saveIndicator, this.fps);
 
     this.fadeEl = h('div', { class: 'fade' }, h('div', { class: 'fade-text' }), h('div', { class: 'fade-sub' }));
     root.append(this.fadeEl);
@@ -93,112 +89,7 @@ export class HUD {
       stamina: mk('⚡', 'linear-gradient(90deg,#d8b42a,#ffe56b)'),
     };
     this.effects = h('div', { class: 'stat-effects' });
-    this.diffBadge = h('div', { class: 'diff-badge' });
-    this.mpPanel = h('div', { class: 'mp-panel hidden' });
-    this.el.append(h('div', { class: 'hud-left' },
-      h('div', { class: 'hud-stats' }, ...Object.values(this.statEls).map((s) => s.row), this.effects),
-      this.diffBadge,
-      this.mpPanel,
-    ));
-  }
-
-  /** Çok oyunculu: sohbet akışı, sohbet kutusu ve izleyici etiketi. */
-  buildSocial() {
-    this.chatOpen = false;
-    this.chatFeed = h('div', { class: 'chat-feed' });
-    this.chatInput = h('input', { class: 'chat-input', type: 'text', maxlength: '140', placeholder: 'Mesaj yaz… (Enter: gönder · Esc: kapat)' });
-    this.chatInput.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') {
-        const text = this.chatInput.value.trim();
-        if (text) {
-          const sent = this.game.net.sendChat(text);
-          if (sent) this.chatMessage(this.game.profile.name, sent, true);
-        }
-        this.closeChat();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        this.closeChat();
-      }
-    });
-    this.chatInput.addEventListener('blur', () => {
-      if (this.chatOpen) setTimeout(() => this.chatOpen && this.closeChat(false), 0);
-    });
-    this.chatBox = h('div', { class: 'chat hidden' }, this.chatFeed, this.chatInput);
-    this.spectatorTag = h('div', { class: 'spectator-tag hidden' }, '👻 İZLEYİCİ MODU', h('small', {}, 'Hardcore: bu dünyada tek canın vardı. Diğerlerini izleyebilirsin.'));
-    this.el.append(this.chatBox, this.spectatorTag);
-  }
-
-  openChat() {
-    if (this.chatOpen) return;
-    this.chatOpen = true;
-    this.chatBox.classList.remove('hidden');
-    this.chatBox.classList.add('open');
-    this.chatInput.value = '';
-    this.game.input.exitLock();
-    setTimeout(() => this.chatInput.focus(), 0);
-  }
-
-  closeChat(relock = true) {
-    if (!this.chatOpen) return;
-    this.chatOpen = false;
-    this.chatBox.classList.remove('open');
-    this.chatInput.blur();
-    const g = this.game;
-    if (relock && g.state.mode === 'playing' && !g.ui.active && !g.mpMenu) g.input.requestLock();
-  }
-
-  addChatLine(el) {
-    this.chatBox.classList.remove('hidden');
-    this.chatFeed.append(el);
-    while (this.chatFeed.children.length > 40) this.chatFeed.firstChild.remove();
-    this.chatFeed.scrollTop = this.chatFeed.scrollHeight;
-    setTimeout(() => el.classList.add('old'), 12000);
-  }
-
-  chatMessage(name, text, self = false) {
-    this.addChatLine(h('div', { class: `chat-line ${self ? 'self' : ''}` }, h('b', {}, `${name}: `), text));
-    if (!self) this.game.audio.play('click', { volume: 0.5 });
-  }
-
-  chatSystem(text) {
-    this.addChatLine(h('div', { class: 'chat-line system' }, text));
-  }
-
-  setSpectator(on) {
-    this.el.classList.toggle('spectator', on);
-    this.spectatorTag.classList.toggle('hidden', !on);
-  }
-
-  /** Sol üstteki oda paneli: oda kodu ve oyuncular. */
-  renderPlayers() {
-    const g = this.game;
-    const net = g.net;
-    this.mpPanel.classList.toggle('hidden', !net.active);
-    if (!net.active) {
-      this.mpPanel.replaceChildren();
-      return;
-    }
-    const rows = [{ name: g.profile.name, self: true, host: net.isHost }];
-    for (const p of net.players.values()) rows.push({ name: p.name, host: p.id === net.hostId });
-    this.mpPanel.replaceChildren(
-      h('div', { class: 'mp-head' },
-        h('span', {}, '🌐 Oda ', h('b', { class: 'mp-code' }, net.code ?? '……')),
-        h('span', { class: 'mp-count' }, `${net.playerCount}/8`),
-      ),
-      ...rows.map((r) => h('div', { class: `mp-row ${r.self ? 'self' : ''}` },
-        h('span', { class: 'dot' }), r.name, r.host ? h('span', { class: 'crown', title: 'Odayı kuran' }, '👑') : null)),
-      h('div', { class: 'mp-hint' }, `Sohbet: ${keyLabel(g.settings.bindings.chat?.[0])}`),
-    );
-  }
-
-  renderDifficulty() {
-    const g = this.game;
-    const d = g.difficulty;
-    this.diffShown = g.state.difficulty;
-    this.diffBadge.style.setProperty('--c', d.color);
-    setRich(this.diffBadge, `${d.icon} ${d.name}`);
-    this.diffBadge.title = plainText(d.desc);
+    this.el.append(h('div', { class: 'hud-stats' }, ...Object.values(this.statEls).map((s) => s.row), this.effects));
   }
 
   buildCompass() {
@@ -315,11 +206,6 @@ export class HUD {
         this.game.audio.play('discover', { volume: 0.7 });
       }
     });
-    bus.on('island:entered', ({ id, island, first }) => {
-      if (!first || id === 'novera') return;
-      this.banner('Yeni Ada', island.name, island.def.subtitle ?? '', 5);
-      this.game.audio.play('discover');
-    });
     bus.on('landmark:discovered', ({ def }) => {
       this.banner('Keşfedildi', `${def.icon} ${def.name}`, '');
       this.game.audio.play('discover');
@@ -327,9 +213,7 @@ export class HUD {
     bus.on('player:warning', ({ message }) => this.toast(`⚠️ ${message}`, 'warn'));
     bus.on('build:mode', () => this.renderHints());
     bus.on('chapter:completed', ({ chapter }) => {
-      if (chapter === 1) this.banner('Bölüm 1 Tamamlandı', 'Adanın Sırrı', 'Sırada: dağın altındaki mağara ve demir…', 7);
-      else if (chapter === 2) this.banner('Bölüm 2 Tamamlandı', 'Derinliklerin Sesi', 'Sırada: ormandaki Kadim Sunak ve denizin ötesindeki kayıp adalar…', 7);
-      else this.banner(`Bölüm ${chapter} Tamamlandı`, 'Kayıp Adalar', 'Takımadanın dört muhafızı da yenildi. Tebrikler, kazazede!', 8);
+      this.banner(`Bölüm ${chapter} Tamamlandı`, 'Adanın Sırrı', 'Devamı yakında: mağaralar, demir çağı, tekneler ve yeni adalar…', 7);
     });
     bus.on('perk:points', () => this.updateRight());
     bus.on('ambience:creature', () => {
@@ -359,7 +243,7 @@ export class HUD {
   }
 
   showHotbarLabel(text) {
-    setRich(this.hotbarLabel, text);
+    this.hotbarLabel.textContent = text;
     this.hotbarLabel.classList.add('show');
     clearTimeout(this.hotbarLabelTimer);
     this.hotbarLabelTimer = setTimeout(() => this.hotbarLabel.classList.remove('show'), 1400);
@@ -392,7 +276,7 @@ export class HUD {
         const target = o.amount ?? 1;
         const cur = Math.floor(state.progress[i]);
         const done = cur >= target;
-        const count = o.type === 'walk' || o.type === 'sail' ? `${cur}/${target} m` : target > 1 ? `${cur}/${target}` : done ? '✓' : '';
+        const count = o.type === 'walk' ? `${cur}/${target} m` : target > 1 ? `${cur}/${target}` : done ? '✓' : '';
         item.append(h('div', { class: `qt-obj ${done ? 'done' : ''}` }, h('span', {}, `${done ? '✔' : '○'} ${o.label}`), h('span', { class: 'count' }, count)));
       });
       if (quest.hint && quest.type !== 'side') item.append(h('div', { class: 'qt-hint' }, `💡 ${quest.hint}`));
@@ -401,7 +285,7 @@ export class HUD {
     if (!list.length && this.game.quests.isCompleted('q_sealed_door')) {
       this.tracker.append(h('div', { class: 'qt-item' },
         h('div', { class: 'qt-type' }, 'Serbest Oyun'),
-        h('div', { class: 'qt-title' }, this.game.quests.isCompleted('q_miner') ? 'Bölüm 2 tamamlandı' : 'Bölüm 1 tamamlandı'),
+        h('div', { class: 'qt-title' }, 'Bölüm 1 tamamlandı'),
         h('div', { class: 'qt-hint' }, 'Üssünü büyüt, yan görevleri tamamla ve adayı keşfetmeye devam et.'),
       ));
     }
@@ -462,50 +346,14 @@ export class HUD {
   }
 
   fade(on, text = '', sub = '') {
-    setRich(this.fadeEl.children[0], text);
-    setRich(this.fadeEl.children[1], sub);
+    this.fadeEl.children[0].textContent = text;
+    this.fadeEl.children[1].textContent = sub;
     this.fadeEl.classList.toggle('on', on);
-  }
-
-  /** Hasar alınca kısa kırmızı parlama. */
-  hurtFlash() {
-    const el = this.hurtEl;
-    el.classList.remove('on');
-    void el.offsetWidth;
-    el.classList.add('on');
-  }
-
-  /** Uyanık boss'un can çubuğu (info null ise gizlenir). */
-  setBossBar(info) {
-    if (!this.bossBar) {
-      this.bossName = h('div', { class: 'boss-name' });
-      this.bossTitle = h('div', { class: 'boss-title' });
-      this.bossFill = h('div', { class: 'fill' });
-      this.bossHpText = h('div', { class: 'boss-hp-text' });
-      this.bossBar = h('div', { class: 'boss-bar hidden' }, this.bossName, this.bossTitle, h('div', { class: 'boss-track' }, this.bossFill, this.bossHpText));
-      this.el.append(this.bossBar);
-    }
-    if (!info) {
-      this.bossBar.classList.add('hidden');
-      this.bossBarId = null;
-      return;
-    }
-    if (this.bossBarId !== info.id) {
-      this.bossBarId = info.id;
-      setRich(this.bossName, `{x:${info.id}} ${info.name}`);
-      this.bossTitle.textContent = info.title;
-      this.bossFill.style.background = `linear-gradient(90deg, ${info.color}, #ff4d4d)`;
-    }
-    this.bossBar.classList.remove('hidden');
-    this.bossBar.classList.toggle('enraged', !!info.enraged && !info.dead);
-    this.bossFill.style.transform = `scaleX(${Math.max(0, info.hp / info.maxHp)})`;
-    this.bossHpText.textContent = info.dead ? 'YENİLDİ' : `${Math.ceil(info.hp)} / ${info.maxHp}${info.enraged ? ' · ÖFKELİ' : ''}`;
   }
 
   // ── Kare güncellemesi ───────────────────────────────────
   update(dt) {
     const g = this.game;
-    if (this.diffShown !== g.state.difficulty) this.renderDifficulty();
     this.updateStats();
     this.updateRight();
     this.updateCompass();
@@ -513,7 +361,7 @@ export class HUD {
     this.updateMarkers();
     this.updateBuildHelp();
 
-    const showClick = g.state.mode === 'playing' && !g.ui.active && !g.input.pointerLocked && !this.chatOpen && !g.mpMenu;
+    const showClick = g.state.mode === 'playing' && !g.ui.active && !g.input.pointerLocked;
     this.clickHint.classList.toggle('hidden', !showClick);
 
     this.bannerTimer -= dt;
@@ -547,13 +395,10 @@ export class HUD {
     if (s.starving) fx.push('Açlık: yavaşladın, can kaybediyorsun');
     if (s.dehydrated) fx.push('Susuzluk: can kaybediyorsun');
     if (s.exhausted) fx.push('Yorgun: koşamazsın');
-    fx.push(...this.game.statusEffects);
     const txt = fx.join(' · ');
     if (this.effects.textContent !== txt) this.effects.textContent = txt;
     const hpLow = s.health / s.maxHealth;
     this.vignette.style.opacity = hpLow < 0.35 ? String((0.35 - hpLow) / 0.35) : '0';
-    const cold = this.game.cold;
-    this.frostEl.style.opacity = cold > 0.3 ? String(Math.min(1, (cold - 0.3) / 0.7)) : '0';
   }
 
   updateRight() {
@@ -568,10 +413,7 @@ export class HUD {
     if (p.perkPoints > 0) {
       const code = keyLabel(g.settings.bindings.skills?.[0]);
       const txt = `✨ ${p.perkPoints} yetenek puanı [${code}]`;
-      if (this.perkBadgeText !== txt) {
-        this.perkBadgeText = txt;
-        setRich(this.perkBadge, txt);
-      }
+      if (this.perkBadge.textContent !== txt) this.perkBadge.textContent = txt;
       this.perkBadge.classList.remove('hidden');
     } else this.perkBadge.classList.add('hidden');
   }
@@ -621,7 +463,7 @@ export class HUD {
       this.promptSig = sig;
       this.promptMain.replaceChildren(kbd(g.settings.bindings.interact?.[0]), ` ${pr.action}`, h('span', { style: { color: '#a9b4b8', fontWeight: 500 } }, ` — ${pr.name}${pr.uses ? ` (${pr.uses})` : ''}`));
       this.promptMain.classList.toggle('disabled', !!pr.disabled);
-      setRich(this.promptNote, pr.note ?? '');
+      this.promptNote.textContent = pr.note ?? '';
       this.promptNote.classList.toggle('hidden', !pr.note);
     }
     const hasHp = pr.hp !== undefined && pr.hp < 1;
@@ -647,7 +489,7 @@ export class HUD {
         return;
       }
       const d = Math.hypot(mk.x - p.x, mk.z - p.z);
-      if (d < 3.5 || d > (mk.far ? 2500 : 220)) {
+      if (d < 3.5 || d > 220) {
         el.classList.add('hidden');
         return;
       }
@@ -688,7 +530,7 @@ export class HUD {
         h('span', {}, kbd(s.rotate?.[0]), ' Döndür'),
         h('span', {}, kbd(s.secondary?.[0]), ' / ', kbd('Escape'), ' İptal'),
       ),
-      ...(reason ? [h('div', { class: 'bh-reason' }, reason)] : []),
+      reason ? h('div', { class: 'bh-reason' }, reason) : null,
     );
   }
 }

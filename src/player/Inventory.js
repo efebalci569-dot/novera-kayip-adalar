@@ -111,13 +111,12 @@ export class Inventory {
   }
 
   /** Belirli bir alet türü için en iyi aleti bulur (en yüksek kademe/güç). */
-  /** En iyi alet (minTier: en az bu kademede olmalı). */
-  findBestTool(type, minTier = 0) {
+  findBestTool(type) {
     let best = -1;
     let bestScore = -1;
     this.slots.forEach((s, i) => {
       const tool = s && ITEMS[s.id]?.tool;
-      if (!tool || tool.type !== type || tool.tier < minTier) return;
+      if (!tool || tool.type !== type) return;
       const score = tool.tier * 10 + tool.power;
       if (score > bestScore) {
         bestScore = score;

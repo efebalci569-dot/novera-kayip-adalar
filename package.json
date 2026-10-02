@@ -1,7 +1,7 @@
 {
   "name": "novera-kayip-adalar",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.1.0",
   "description": "Novera: Kayıp Adalar — tarayıcıda oynanan 3D ada hayatta kalma oyunu (Three.js)",
   "type": "module",
   "scripts": {
@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "peerjs": "^1.5.5",
     "three": "^0.180.0"
   },
   "devDependencies": {

@@ -1,7 +1,5 @@
 // 2D (XZ düzleminde) statik çarpışma dünyası: daireler (ağaç gövdesi, kaya) ve
 // döndürülmüş kutular (duvarlar). Uzamsal ızgara ile hızlı sorgulanır.
-// Katmanlar: 'surface' (ada yüzeyi) ve 'cave' (dağın altındaki mağara) aynı XZ alanını
-// paylaşsa da birbirini etkilemez.
 
 export class CollisionWorld {
   constructor(cellSize = 8) {
@@ -37,13 +35,13 @@ export class CollisionWorld {
     return { minX: c.x - ext, maxX: c.x + ext, minZ: c.z - ext, maxZ: c.z + ext };
   }
 
-  addCircle(x, z, r, owner = null, layer = 'surface') {
-    return this.insert({ type: 'circle', x, z, r, owner, enabled: true, layer });
+  addCircle(x, z, r, owner = null) {
+    return this.insert({ type: 'circle', x, z, r, owner, enabled: true });
   }
 
   /** hw/hd: yarı genişlik/derinlik, rot: Y ekseni etrafında dönüş. */
-  addBox(x, z, hw, hd, rot = 0, owner = null, height = Infinity, layer = 'surface') {
-    return this.insert({ type: 'box', x, z, hw, hd, rot, cos: Math.cos(rot), sin: Math.sin(rot), owner, enabled: true, height, layer });
+  addBox(x, z, hw, hd, rot = 0, owner = null, height = Infinity) {
+    return this.insert({ type: 'box', x, z, hw, hd, rot, cos: Math.cos(rot), sin: Math.sin(rot), owner, enabled: true, height });
   }
 
   remove(collider) {
@@ -57,24 +55,24 @@ export class CollisionWorld {
     collider._cells = null;
   }
 
-  query(x, z, radius, layer = 'surface') {
+  query(x, z, radius) {
     const out = this._result;
     out.clear();
     const cs = this.cellSize;
     for (let ix = Math.floor((x - radius) / cs); ix <= Math.floor((x + radius) / cs); ix++) {
       for (let iz = Math.floor((z - radius) / cs); iz <= Math.floor((z + radius) / cs); iz++) {
         const cell = this.cells.get(this.key(ix, iz));
-        if (cell) for (const c of cell) if (c.enabled && c.layer === layer) out.add(c);
+        if (cell) for (const c of cell) if (c.enabled) out.add(c);
       }
     }
     return out;
   }
 
-  /** Daire şeklindeki bir gövdeyi (oyuncu, hayvan) çarpıştırıcıların dışına iter. */
-  resolveCircle(pos, radius, feetY = -Infinity, layer = 'surface') {
+  /** Daire şeklindeki bir gövdeyi (oyuncu) çarpıştırıcıların dışına iter. */
+  resolveCircle(pos, radius, feetY = -Infinity) {
     let hit = false;
     for (let iter = 0; iter < 2; iter++) {
-      for (const c of this.query(pos.x, pos.z, radius + 2, layer)) {
+      for (const c of this.query(pos.x, pos.z, radius + 2)) {
         if (c.minY !== undefined && feetY > c.top) continue;
         if (c.type === 'circle') {
           const dx = pos.x - c.x;
@@ -129,8 +127,8 @@ export class CollisionWorld {
   }
 
   /** Yerleştirme kontrolü: verilen daire herhangi bir çarpıştırıcıyla kesişiyor mu? */
-  overlapsCircle(x, z, radius, layer = 'surface') {
-    for (const c of this.query(x, z, radius + 3, layer)) {
+  overlapsCircle(x, z, radius) {
+    for (const c of this.query(x, z, radius + 3)) {
       if (c.type === 'circle') {
         if (Math.hypot(x - c.x, z - c.z) < radius + c.r) return true;
       } else {
@@ -139,19 +137,6 @@ export class CollisionWorld {
       }
     }
     return false;
-  }
-
-  /**
-   * Döndürülmüş bir dikdörtgenle (yapı tabanı) kesişen ilk çarpıştırıcıyı döndürür.
-   * rect: { x, z, hw, hd, rot } · skip(c) true dönerse o çarpıştırıcı yok sayılır.
-   */
-  findRectOverlap(rect, layer = 'surface', skip = null) {
-    const ext = Math.hypot(rect.hw, rect.hd);
-    for (const c of this.query(rect.x, rect.z, ext + 3, layer)) {
-      if (skip?.(c)) continue;
-      if (c.type === 'circle' ? circleHitsRect(c.x, c.z, c.r, rect) : boxHitsRect(c, rect)) return c;
-    }
-    return null;
   }
 
   // ── Platformlar (kulübe tabanı gibi üzerine çıkılabilen yüzeyler) ──
@@ -178,49 +163,4 @@ export class CollisionWorld {
     }
     return best;
   }
-}
-
-// ── Şekil kesişim yardımcıları ───────────────────────────────
-
-/** Dairenin döndürülmüş dikdörtgenle kesişimi. */
-export function circleHitsRect(x, z, r, rect) {
-  const c = Math.cos(rect.rot ?? 0);
-  const s = Math.sin(rect.rot ?? 0);
-  const dx = x - rect.x;
-  const dz = z - rect.z;
-  // dünya → dikdörtgen yerel (yapıların toWorld dönüşümünün tersi)
-  const lx = dx * c - dz * s;
-  const lz = dx * s + dz * c;
-  const cx = Math.max(-rect.hw, Math.min(rect.hw, lx));
-  const cz = Math.max(-rect.hd, Math.min(rect.hd, lz));
-  return Math.hypot(lx - cx, lz - cz) < r;
-}
-
-function corners(b) {
-  const c = Math.cos(b.rot ?? 0);
-  const s = Math.sin(b.rot ?? 0);
-  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => {
-    const lx = u * b.hw;
-    const lz = v * b.hd;
-    return [b.x + lx * c + lz * s, b.z - lx * s + lz * c];
-  });
-}
-
-/** İki döndürülmüş dikdörtgenin kesişimi (ayırıcı eksen teoremi). */
-export function boxHitsRect(a, b) {
-  const ca = corners(a);
-  const cb = corners(b);
-  const axes = [];
-  for (const box of [a, b]) {
-    const c = Math.cos(box.rot ?? 0);
-    const s = Math.sin(box.rot ?? 0);
-    axes.push([c, -s], [s, c]);
-  }
-  for (const [ax, az] of axes) {
-    let minA = Infinity, maxA = -Infinity, minB = Infinity, maxB = -Infinity;
-    for (const [x, z] of ca) { const p = x * ax + z * az; minA = Math.min(minA, p); maxA = Math.max(maxA, p); }
-    for (const [x, z] of cb) { const p = x * ax + z * az; minB = Math.min(minB, p); maxB = Math.max(maxB, p); }
-    if (maxA <= minB || maxB <= minA) return false;
-  }
-  return true;
 }
