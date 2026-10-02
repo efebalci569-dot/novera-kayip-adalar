@@ -20,23 +20,25 @@ export class ItemDrops {
     ]);
   }
 
-  /** stacks: [{ id, count, dur? }] */
-  spawn(x, z, stacks) {
+  /** stacks: [{ id, count, dur? }] · cave: çuval mağarada mı (varsayılan: oyuncu nerdeyse) */
+  spawn(x, z, stacks, cave = this.world.inCave) {
     if (!stacks.length) return null;
-    const near = this.drops.find((d) => Math.hypot(d.x - x, d.z - z) < 1.5);
+    cave = cave && !!this.world.cave;
+    const near = this.drops.find((d) => Math.hypot(d.x - x, d.z - z) < 1.5 && d.cave === cave);
     if (near) {
       near.items.push(...stacks.map((s) => ({ ...s })));
       return near;
     }
-    const y = Math.max(this.world.terrain.getHeight(x, z), 0);
+    // mağaradaysa mağara tabanına, yüzeyde araziye (su altındaysa su yüzeyine) bırakılır
+    const y = cave ? this.world.cave.floorHeight(x, z) : Math.max(this.world.terrain.getHeight(x, z), 0);
     const mesh = new THREE.Mesh(this.geometry, sharedMaterials.standard);
     mesh.position.set(x, y, z);
     mesh.castShadow = true;
     this.group.add(mesh);
-    const drop = { x, y, z, items: stacks.map((s) => ({ ...s })), mesh, phase: Math.random() * 6 };
+    const drop = { x, y, z, items: stacks.map((s) => ({ ...s })), mesh, phase: Math.random() * 6, cave };
     drop.interactable = this.world.addInteractable({
       kind: 'drop', x, y: y + 0.4, z, range: 2.6, pickRadius: 0.7, pickHeight: 0.6,
-      getPrompt: () => ({ action: 'Eşyaları Al', name: `Çuval (${drop.items.reduce((a, s) => a + s.count, 0)} eşya)` }),
+      getPrompt: () => ({ action: 'Eşyaları Al', name: `${drop.death ? '💀 Ölüm çuvalı' : 'Çuval'} (${drop.items.reduce((a, s) => a + s.count, 0)} eşya)` }),
       interact: (game) => this.collect(drop, game),
     });
     this.drops.push(drop);
@@ -69,10 +71,13 @@ export class ItemDrops {
   }
 
   serialize() {
-    return this.drops.map((d) => ({ x: d.x, z: d.z, items: d.items.filter((s) => ITEMS[s.id]) }));
+    return this.drops.map((d) => ({ x: d.x, z: d.z, cave: d.cave ? 1 : 0, death: d.death ? 1 : 0, items: d.items.filter((s) => ITEMS[s.id]) }));
   }
 
   deserialize(list) {
-    for (const d of list ?? []) this.spawn(d.x, d.z, d.items);
+    for (const d of list ?? []) {
+      const drop = this.spawn(d.x, d.z, d.items, !!d.cave);
+      if (drop && d.death) drop.death = true;
+    }
   }
 }

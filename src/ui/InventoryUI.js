@@ -88,6 +88,13 @@ export class InventoryUI extends Panel {
       h('div', {}, '🛡️ Savunma', h('b', {}, s.defense)),
       h('div', {}, '⚔️ Hasar', h('b', {}, Math.round((s.baseDamage + weapon) * (1 + p.bonus('damage'))))),
     );
+    const armorId = g.state.upgrades.armor;
+    const armorRow = armorId && ITEMS[armorId]
+      ? h('div', { class: 'armor-row' },
+        h('span', { class: 'ar-icon' }, ITEMS[armorId].icon),
+        h('div', { class: 'ar-text' }, h('b', {}, ITEMS[armorId].name), h('small', {}, this.armorNote(ITEMS[armorId].armor))),
+        h('button', { class: 'btn small', onclick: () => { g.unequipArmor(); this.render(); } }, 'Çıkar'))
+      : h('div', { class: 'armor-row empty' }, '🛡️ Zırh kuşanılmadı — zırhları sağ tıkla ya da “Kuşan” ile giy.');
 
     this.body.replaceChildren(h('div', { class: 'inv-layout' },
       h('div', {},
@@ -96,6 +103,7 @@ export class InventoryUI extends Panel {
         h('div', { class: 'inv-note' }, 'İlk 5 slot hızlı slotlarındır (1–5 tuşları). Sürükleyerek yer değiştir, sağ tık ile hızlı kullan.'),
         h('div', { class: 'section-title', style: { marginTop: '18px' } }, `Karakter · Seviye ${p.level}`),
         charStats,
+        armorRow,
       ),
       this.renderDetails(),
     ));
@@ -119,9 +127,19 @@ export class InventoryUI extends Panel {
     if (def.damage) stats.push(`⚔️ Hasar ${def.damage}`);
     if (def.tool && def.tool.type !== 'torch') stats.push(`Kademe ${def.tool.tier}`);
     if (stack.dur !== undefined) stats.push(`Dayanıklılık ${Math.ceil(stack.dur)}/${def.durability}`);
+    if (def.slow) stats.push('❄️ Yavaşlatır');
+    if (def.burn) stats.push('🔥 Yakar');
+    if (def.armor) {
+      stats.push(`🛡️ Savunma +${def.armor.defense}`);
+      if (def.armor.cold) stats.push('❄️ Soğuğa dayanıklı');
+      if (def.armor.heat) stats.push('🔥 Ateşe dayanıklı');
+    }
 
     const actions = [];
     if (def.food) actions.push(h('button', { class: 'btn small primary', onclick: () => this.quickUse(this.selected) }, def.consumeVerb ?? 'Ye'));
+    if (def.vehicle) actions.push(h('button', { class: 'btn small primary', onclick: () => this.quickUse(this.selected) }, '🌊 Suya İndir'));
+    if (def.armor) actions.push(h('button', { class: 'btn small primary', onclick: () => this.quickUse(this.selected) }, '🛡️ Kuşan'));
+    if (def.chart) actions.push(h('button', { class: 'btn small primary', onclick: () => this.quickUse(this.selected) }, '🗺️ Haritayı Aç'));
     if (this.selected >= HOTBAR_SIZE) {
       actions.push(h('button', { class: 'btn small', onclick: () => this.toHotbar(this.selected) }, 'Hızlı slota taşı'));
     } else {
@@ -167,11 +185,28 @@ export class InventoryUI extends Panel {
     const def = ITEMS[stack.id];
     if (def.food) {
       g.interaction.consume(i);
+    } else if (def.armor) {
+      g.equipArmor(i);
+      this.selected = -1;
+      this.render();
+    } else if (def.chart || def.summon) {
+      g.interaction.useSpecial(i);
+    } else if (def.vehicle) {
+      g.ui.close();
+      if (!g.building.startPlacement(def.vehicle)) g.notify('Bir taşıtı suya indirmek için kıyıda olmalısın.', 'warn');
+      else g.notify(`${def.icon} Suya bak ve [Sol tık] ile indir. [R] döndürür.`, 'info');
     } else if (i < HOTBAR_SIZE) {
       g.player.selectSlot(i);
     } else {
       this.toHotbar(i);
     }
+  }
+
+  armorNote(a) {
+    const parts = [`Savunma +${a.defense}`];
+    if (a.cold) parts.push('soğuğa dayanıklı');
+    if (a.heat) parts.push('ateşe dayanıklı');
+    return parts.join(' · ');
   }
 
   toHotbar(i) {

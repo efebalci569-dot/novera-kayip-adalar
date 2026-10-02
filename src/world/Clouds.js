@@ -36,11 +36,17 @@ export class Clouds {
     }
   }
 
-  update(dt, env) {
+  update(dt, env, cam = null) {
     this.material.emissiveIntensity = 0.08 + env.lightLevel * 0.22;
+    const ox = cam?.x ?? 0;
+    const oz = cam?.z ?? 0;
     for (const c of this.clouds) {
       c.x += WIND * c.speed * dt;
-      if (c.x > EXTENT) c.x -= EXTENT * 2;
+      // bulutlar kameranın çevresinde döner (uzak adalarda da gökyüzü dolu)
+      if (c.x - ox > EXTENT) c.x -= EXTENT * 2;
+      else if (c.x - ox < -EXTENT) c.x += EXTENT * 2;
+      if (c.z - oz > EXTENT) c.z -= EXTENT * 2;
+      else if (c.z - oz < -EXTENT) c.z += EXTENT * 2;
       _q.setFromAxisAngle(_up, c.yaw);
       _m.compose(_p.set(c.x, c.y, c.z), _q, _s.set(c.scale, c.scale, c.scale));
       c.mesh.setMatrixAt(c.index, _m);

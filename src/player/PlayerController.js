@@ -7,9 +7,10 @@ const JUMP_VELOCITY = 7.2;
 const GRAVITY = 22;
 const JUMP_STAMINA = 8;
 const SWIM_DEPTH = 1.25; // bu derinlikten sonra yüzülür
-const WORLD_LIMIT = 232; // açık denize çıkış sınırı
+const GHOST_LIMIT = 1500; // izleyici okyanusun sonuna kadar uçabilir
 const SAFE_FALL = 4.5; // bu yükseklikten (m) sonrası can yakar
 const FALL_DAMAGE_PER_M = 7; // ~18 m düşüş ölümcül
+const GHOST_SPEED = 9;
 
 /** Klavye girdisini kamera yönüne göre harekete çevirir; yerçekimi, zıplama, yüzme ve çarpışma. */
 export class PlayerController {
@@ -18,8 +19,8 @@ export class PlayerController {
     this.player = player;
     this.distanceAccum = 0;
     this.stepTimer = 0;
-    this.limitWarnCooldown = 0;
     this.fallPeak = null;
+    this.strokeTimer = 0;
   }
 
   /** Yere iniş: yeterince yüksekten düşüldüyse can yakar. */
@@ -34,8 +35,53 @@ export class PlayerController {
     if (!game.player.stats.dead) game.notify(`Yüksekten düştün! (−${Math.round(dmg)} ❤️)`, 'warn');
   }
 
+  /** İzleyici (hayalet): çarpışmasız serbest uçuş, bakılan yöne doğru. */
+  updateGhost(dt, inputEnabled) {
+    const { game, player } = this;
+    const input = game.input;
+    const cam = game.cameraController;
+    let f = 0;
+    let s = 0;
+    let u = 0;
+    if (inputEnabled) {
+      if (input.isDown('forward')) f += 1;
+      if (input.isDown('backward')) f -= 1;
+      if (input.isDown('right')) s += 1;
+      if (input.isDown('left')) s -= 1;
+      if (input.isDown('jump')) u += 1;
+    }
+    const cp = Math.cos(cam.lookPitch);
+    const fx = -Math.sin(cam.yaw) * cp, fy = Math.sin(cam.lookPitch), fz = -Math.cos(cam.yaw) * cp;
+    const rx = Math.cos(cam.yaw), rz = -Math.sin(cam.yaw);
+    const speed = GHOST_SPEED * (inputEnabled && input.isDown('run') ? 2.6 : 1);
+    const v = player.velocity;
+    v.x = damp(v.x, (fx * f + rx * s) * speed, 6, dt);
+    v.y = damp(v.y, (fy * f + u) * speed, 6, dt);
+    v.z = damp(v.z, (fz * f + rz * s) * speed, 6, dt);
+    const pos = player.position;
+    pos.addScaledVector(v, dt);
+    const r = Math.hypot(pos.x, pos.z);
+    if (r > GHOST_LIMIT) {
+      pos.x *= GHOST_LIMIT / r;
+      pos.z *= GHOST_LIMIT / r;
+    }
+    const floor = game.world.getGroundHeight(pos.x, pos.z, pos.y) - 1.2;
+    pos.y = Math.min(160, Math.max(pos.y, floor, 0.2 - 1.2));
+    player.swimming = false;
+    player.wading = false;
+    player.grounded = false;
+    player.running = false;
+    player.speed = Math.hypot(v.x, v.z);
+    player.yaw = cam.yaw + Math.PI;
+    this.fallPeak = null;
+  }
+
   update(dt, inputEnabled) {
     const { game, player } = this;
+    if (player.ghost) {
+      this.updateGhost(dt, inputEnabled);
+      return;
+    }
     const input = game.input;
     const world = game.world;
     const stats = player.stats;
@@ -43,6 +89,16 @@ export class PlayerController {
     if (player.teleported) {
       player.teleported = false;
       this.fallPeak = null;
+    }
+    // teknedeyken konumu VehicleSystem belirler
+    if (player.mounted) {
+      player.swimming = false;
+      player.wading = false;
+      player.grounded = true;
+      player.running = false;
+      player.velocity.set(0, 0, 0);
+      this.fallPeak = null;
+      return;
     }
 
     let mx = 0;
@@ -98,19 +154,12 @@ export class PlayerController {
     }
     pos.x = nx;
     pos.z = nz;
-    world.collision.resolveCircle(pos, player.radius, pos.y);
+    world.collision.resolveCircle(pos, player.radius, pos.y, world.collisionLayer);
+    if (world.inCave) world.cave.constrain(pos, player.radius);
+    else game.animals?.pushPlayer(pos, player.radius);
 
-    // açık deniz sınırı
-    const r = Math.hypot(pos.x, pos.z);
-    this.limitWarnCooldown -= dt;
-    if (r > WORLD_LIMIT) {
-      pos.x *= WORLD_LIMIT / r;
-      pos.z *= WORLD_LIMIT / r;
-      if (this.limitWarnCooldown <= 0) {
-        this.limitWarnCooldown = 6;
-        game.notify('Açık deniz çok tehlikeli. Daha uzağa gitmek için bir tekneye ihtiyacın var.', 'warn');
-      }
-    }
+    // açık deniz sınırı: yüzerek en yakın adanın kıyısından çok uzaklaşılamaz
+    if (!world.inCave) game.navigation.limitSwimmer(pos);
 
     // dikey hareket
     const ground = world.getGroundHeight(pos.x, pos.z, pos.y);
@@ -129,6 +178,24 @@ export class PlayerController {
       if (!wasSwimming) {
         game.audio.play('splash');
         world.particles.emit('water', pos.x, surface, pos.z, 1.5);
+        world.ripples.emit(pos.x, surface, pos.z, 2.2, 1.4, 0.5);
+      }
+      // kulaç halkaları ve sıçramalar (kol hareketleriyle aynı ritimde)
+      const moving = Math.hypot(player.velocity.x, player.velocity.z) > 0.6;
+      this.strokeTimer -= dt;
+      if (this.strokeTimer <= 0) {
+        this.strokeTimer = moving ? 0.5 : 1.5;
+        const fx = Math.sin(player.yaw), fz = Math.cos(player.yaw);
+        if (moving) {
+          const side = player.model.strokeSide ?? 1;
+          const sx = Math.cos(player.yaw) * side * 0.35;
+          const sz = -Math.sin(player.yaw) * side * 0.35;
+          world.ripples.emit(pos.x + fx * 0.9 + sx, surface, pos.z + fz * 0.9 + sz, 1.1, 1.0, 0.4);
+          world.particles.emit('water', pos.x + fx * 0.9 + sx, surface + 0.05, pos.z + fz * 0.9 + sz, 0.35);
+          game.audio.play('swim', { volume: 0.45 });
+        } else {
+          world.ripples.emit(pos.x, surface, pos.z, 1.5, 1.8, 0.3);
+        }
       }
     } else {
       if (inputEnabled && input.wasPressed('jump') && player.grounded && !player.action) {
