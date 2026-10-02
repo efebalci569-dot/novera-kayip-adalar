@@ -7,7 +7,7 @@ const JUMP_VELOCITY = 7.2;
 const GRAVITY = 22;
 const JUMP_STAMINA = 8;
 const SWIM_DEPTH = 1.25; // bu derinlikten sonra yüzülür
-const WORLD_LIMIT = 232; // açık denize çıkış sınırı
+const GHOST_LIMIT = 1500; // izleyici okyanusun sonuna kadar uçabilir
 const SAFE_FALL = 4.5; // bu yükseklikten (m) sonrası can yakar
 const FALL_DAMAGE_PER_M = 7; // ~18 m düşüş ölümcül
 const GHOST_SPEED = 9;
@@ -19,7 +19,6 @@ export class PlayerController {
     this.player = player;
     this.distanceAccum = 0;
     this.stepTimer = 0;
-    this.limitWarnCooldown = 0;
     this.fallPeak = null;
     this.strokeTimer = 0;
   }
@@ -62,9 +61,9 @@ export class PlayerController {
     const pos = player.position;
     pos.addScaledVector(v, dt);
     const r = Math.hypot(pos.x, pos.z);
-    if (r > WORLD_LIMIT + 60) {
-      pos.x *= (WORLD_LIMIT + 60) / r;
-      pos.z *= (WORLD_LIMIT + 60) / r;
+    if (r > GHOST_LIMIT) {
+      pos.x *= GHOST_LIMIT / r;
+      pos.z *= GHOST_LIMIT / r;
     }
     const floor = game.world.getGroundHeight(pos.x, pos.z, pos.y) - 1.2;
     pos.y = Math.min(160, Math.max(pos.y, floor, 0.2 - 1.2));
@@ -159,17 +158,8 @@ export class PlayerController {
     if (world.inCave) world.cave.constrain(pos, player.radius);
     else game.animals?.pushPlayer(pos, player.radius);
 
-    // açık deniz sınırı
-    const r = Math.hypot(pos.x, pos.z);
-    this.limitWarnCooldown -= dt;
-    if (r > WORLD_LIMIT) {
-      pos.x *= WORLD_LIMIT / r;
-      pos.z *= WORLD_LIMIT / r;
-      if (this.limitWarnCooldown <= 0) {
-        this.limitWarnCooldown = 6;
-        game.notify('Açık deniz çok tehlikeli. Daha uzağa gitmek için bir tekneye ihtiyacın var.', 'warn');
-      }
-    }
+    // açık deniz sınırı: yüzerek en yakın adanın kıyısından çok uzaklaşılamaz
+    if (!world.inCave) game.navigation.limitSwimmer(pos);
 
     // dikey hareket
     const ground = world.getGroundHeight(pos.x, pos.z, pos.y);

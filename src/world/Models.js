@@ -131,7 +131,7 @@ const _n = new THREE.Vector3();
 const _tint = new THREE.Color();
 
 /** Yukarı bakan yüzleri verilen renge (yosun, kum…) doğru boyar. */
-function tintUpFaces(g, color, threshold = 0.6, amount = 0.85) {
+export function tintUpFaces(g, color, threshold = 0.6, amount = 0.85) {
   const pos = g.attributes.position;
   const col = g.attributes.color;
   _tint.set(color);
@@ -526,9 +526,218 @@ function caveMushroom(rng, seed) {
   return merge(parts);
 }
 
+
+// ── Çöl / buz / volkan kaynakları ───────────────────────────
+function cactus(rng, seed, lod = false) {
+  const parts = [];
+  const H = randRange(rng, 2.8, 4.2);
+  const r = randRange(rng, 0.26, 0.34);
+  const seg = lod ? 5 : 8;
+  const greens = ['#4f8f45', '#5a9c4c', '#478540'];
+  parts.push(part(new THREE.CylinderGeometry(r * 0.92, r, H, seg), greens[0], { y: H / 2 - 0.1, seed, shade: 0.06 }));
+  parts.push(part(new THREE.SphereGeometry(r * 0.92, seg, 4, 0, Math.PI * 2, 0, Math.PI / 2), greens[1], { y: H - 0.1, seed: seed + 1 }));
+  const arms = 1 + Math.floor(rng() * 2.4);
+  for (let i = 0; i < arms; i++) {
+    const side = i % 2 ? -1 : 1;
+    const ay = randRange(rng, H * 0.35, H * 0.6);
+    const out = randRange(rng, 0.55, 0.75);
+    const up = randRange(rng, 0.8, 1.4);
+    const ar = r * 0.62;
+    const yaw = rng() * Math.PI;
+    const cx = Math.cos(yaw) * side;
+    const cz = Math.sin(yaw) * side;
+    parts.push(beam(new THREE.Vector3(0, ay, 0), new THREE.Vector3(cx * out, ay, cz * out), ar, ar, greens[2], seg, { seed: seed + 10 + i }));
+    parts.push(beam(new THREE.Vector3(cx * out, ay - ar * 0.6, cz * out), new THREE.Vector3(cx * out, ay + up, cz * out), ar, ar * 0.9, greens[1], seg, { seed: seed + 20 + i }));
+    parts.push(part(new THREE.SphereGeometry(ar * 0.9, seg, 3, 0, Math.PI * 2, 0, Math.PI / 2), greens[1], { x: cx * out, y: ay + up, z: cz * out, seed: seed + 30 + i }));
+  }
+  if (!lod && rng() > 0.4) {
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + rng();
+      parts.push(part(new THREE.IcosahedronGeometry(0.07, 0), k % 2 ? '#f06292' : '#ffd166', { x: Math.cos(a) * r * 0.6, y: H - 0.02, z: Math.sin(a) * r * 0.6, seed: seed + 40 + k }));
+    }
+  }
+  return merge(parts);
+}
+
+function desertShrub(rng, seed) {
+  const parts = [];
+  const cols = ['#9a8a52', '#8a7a46', '#a8975c', '#7d6f40'];
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + rng() * 0.4;
+    const h = randRange(rng, 0.5, 1.0);
+    const tilt = randRange(rng, 0.4, 0.9);
+    parts.push(part(new THREE.ConeGeometry(0.05, h, 3), cols[i % 4], {
+      x: Math.cos(a) * 0.12, y: h / 2 - 0.05, z: Math.sin(a) * 0.12, rx: Math.sin(a) * tilt, rz: -Math.cos(a) * tilt, seed: seed + i,
+    }));
+  }
+  parts.push(part(new THREE.IcosahedronGeometry(0.38, 0), '#8f8050', { y: 0.32, sy: 0.7, jitter: 0.08, seed: seed + 30, shade: 0.1 }));
+  for (let k = 0; k < 4; k++) parts.push(part(new THREE.IcosahedronGeometry(0.05, 0), '#f2c14e', { x: randRange(rng, -0.35, 0.35), y: randRange(rng, 0.4, 0.7), z: randRange(rng, -0.35, 0.35), seed: seed + 40 + k }));
+  return merge(parts);
+}
+
+function sandstoneRock(rng, seed) {
+  const parts = [];
+  const bands = ['#d9a86c', '#c98f55', '#e2b47a', '#b97c48'];
+  let y = 0;
+  const n = 3 + Math.floor(rng() * 2);
+  for (let i = 0; i < n; i++) {
+    const w = randRange(rng, 1.6, 2.2) * (1 - i * 0.14);
+    const d = randRange(rng, 1.2, 1.7) * (1 - i * 0.12);
+    const h = randRange(rng, 0.35, 0.55);
+    parts.push(part(new THREE.BoxGeometry(w, h, d, 2, 1, 2), bands[i % 4], { x: randRange(rng, -0.15, 0.15), y: y + h / 2, z: randRange(rng, -0.1, 0.1), ry: rng() * 0.6, jitter: 0.06, seed: seed + i, shade: 0.05 }));
+    y += h * 0.92;
+  }
+  return merge(parts);
+}
+
+function copperRock(rng, seed) {
+  return oreRock(rng, seed, '#8d7a68', 9, ['#d27a3b', '#3fbf9f', '#e39b55', '#2fa58a'], 0.21);
+}
+
+function bonePile(rng, seed) {
+  const parts = [];
+  const bone = '#efe6d2';
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.TorusGeometry(0.45 - i * 0.04, 0.035, 4, 10, Math.PI);
+    parts.push(part(g, bone, { x: -0.5 + i * 0.22, y: 0.05, rz: 0, ry: Math.PI / 2, rx: -0.2, seed: seed + i }));
+  }
+  parts.push(beam(new THREE.Vector3(-0.7, 0.08, 0), new THREE.Vector3(0.5, 0.06, 0), 0.05, 0.04, bone, 5, { seed: seed + 10 }));
+  parts.push(part(new THREE.IcosahedronGeometry(0.2, 1), bone, { x: 0.8, y: 0.16, z: 0.2, sz: 1.3, seed: seed + 11 }));
+  parts.push(part(new THREE.BoxGeometry(0.05, 0.05, 0.03), '#3a3026', { x: 0.88, y: 0.22, z: 0.43, seed: seed + 12 }));
+  parts.push(part(new THREE.BoxGeometry(0.05, 0.05, 0.03), '#3a3026', { x: 0.72, y: 0.22, z: 0.43, seed: seed + 13 }));
+  parts.push(part(new THREE.ConeGeometry(0.05, 0.35, 5), bone, { x: 1.0, y: 0.25, z: 0.05, rz: -1.1, seed: seed + 14 }));
+  parts.push(part(new THREE.ConeGeometry(0.05, 0.35, 5), bone, { x: 0.62, y: 0.25, z: 0.05, rz: 1.1, seed: seed + 15 }));
+  return merge(parts);
+}
+
+function snowPine(rng, seed, lod = false) {
+  const parts = [];
+  const H = randRange(rng, 9, 12.5);
+  parts.push(beam(new THREE.Vector3(0, -0.2, 0), new THREE.Vector3(0, H * 0.92, 0), 0.4, 0.08, '#4f3a2b', lod ? 4 : 7, { seed, shade: 0.06 }));
+  const tiers = 6;
+  const greens = ['#2c5e44', '#295640', '#31684b'];
+  for (let i = 0; i < tiers; i++) {
+    const t = i / tiers;
+    const r = 3.1 * (1 - t * 0.85) + randRange(rng, -0.15, 0.15);
+    const h = 2.7 * (1 - t * 0.35);
+    const y = H * (0.2 + 0.74 * t) + h * 0.2;
+    const p = part(droopCone(r, h, lod ? 6 : 9, 0.3 + r * 0.08), greens[i % greens.length], {
+      y, ry: rng() * Math.PI, seed: seed + 5 + i, shade: 0.06, jitter: lod ? 0 : 0.07,
+    });
+    heightShade(p, y - h / 2 - 0.5, y + h / 2, 0.55, 1.05);
+    parts.push(tintUpFaces(p, '#f1f6fa', 0.35, 0.92));
+  }
+  return merge(parts);
+}
+
+function iceRock(rng, seed) {
+  const parts = [];
+  parts.push(part(new THREE.IcosahedronGeometry(1, 1), '#8fa6b8', { y: 0.45, sx: 1.4, sy: 0.85, sz: 1.2, ry: rng() * 3, jitter: 0.18, seed, shade: 0.1 }));
+  const cols = ['#cdeeff', '#a8e0ff', '#e6f9ff'];
+  const n = 5 + Math.floor(rng() * 3);
+  for (let i = 0; i < n; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = randRange(rng, 0.2, 0.8);
+    const len = randRange(rng, 0.6, 1.4);
+    const g = new THREE.OctahedronGeometry(0.5, 0);
+    g.scale(0.3, len, 0.3);
+    g.translate(0, len * 0.4, 0);
+    parts.push(part(g, cols[i % 3], { x: Math.cos(a) * d, y: 0.6, z: Math.sin(a) * d, rx: Math.sin(a) * 0.6, rz: -Math.cos(a) * 0.6, seed: seed + 10 + i, shade: 0.12 }));
+  }
+  for (const p of parts.slice(0, 1)) tintUpFaces(p, '#f1f6fa', 0.5, 0.85);
+  return merge(parts);
+}
+
+function frostBush(rng, seed) {
+  const parts = [];
+  const blobs = [[0, 0.6, 0, 0.7], [0.5, 0.42, 0.2, 0.5], [-0.45, 0.42, -0.15, 0.5]];
+  blobs.forEach(([x, y, z, r], i) => {
+    const p = part(new THREE.IcosahedronGeometry(r, 1), i % 2 ? '#4f7f6a' : '#5f8f7a', { x, y, z, sy: 0.85, jitter: 0.08, seed: seed + i, shade: 0.07 });
+    parts.push(tintUpFaces(p, '#eef6fb', 0.55, 0.8));
+  });
+  for (let i = 0; i < 14; i++) {
+    const a = rng() * Math.PI * 2;
+    const el = randRange(rng, 0, 1);
+    parts.push(part(new THREE.IcosahedronGeometry(0.07, 0), i % 2 ? '#9ad8ff' : '#d9f2ff', {
+      x: Math.cos(a) * Math.cos(el) * 0.78, y: 0.6 + Math.sin(el) * 0.55, z: Math.sin(a) * Math.cos(el) * 0.7, seed: seed + 10 + i,
+    }));
+  }
+  return merge(parts);
+}
+
+function charredTree(rng, seed, lod = false) {
+  const parts = [];
+  const H = randRange(rng, 4.5, 6.5);
+  const lean = randRange(rng, -0.3, 0.3);
+  const bark = '#2e2522';
+  const top = new THREE.Vector3(lean, H, randRange(rng, -0.2, 0.2));
+  parts.push(beam(new THREE.Vector3(0, -0.2, 0), top, 0.38, 0.1, bark, lod ? 4 : 7, { seed, shade: 0.1 }));
+  const branches = lod ? 3 : 6;
+  for (let i = 0; i < branches; i++) {
+    const t = randRange(rng, 0.4, 0.9);
+    const a = rng() * Math.PI * 2;
+    const base = new THREE.Vector3(lean * t, H * t, 0);
+    const len = randRange(rng, 1.0, 2.0) * (1.1 - t * 0.5);
+    const end = new THREE.Vector3(base.x + Math.cos(a) * len, base.y + len * 0.55, base.z + Math.sin(a) * len);
+    parts.push(beam(base, end, 0.09, 0.03, i % 2 ? bark : '#3a2e2a', 4, { seed: seed + 10 + i }));
+  }
+  if (!lod) {
+    for (let k = 0; k < 4; k++) {
+      parts.push(part(new THREE.OctahedronGeometry(0.06, 0), '#ff6a2a', { x: randRange(rng, -0.2, 0.2) + lean * 0.3, y: randRange(rng, 0.4, H * 0.6), z: randRange(rng, -0.25, 0.25), seed: seed + 30 + k }));
+    }
+  }
+  return merge(parts);
+}
+
+function obsidianRock(rng, seed) {
+  const parts = [];
+  parts.push(part(new THREE.IcosahedronGeometry(0.8, 0), '#3a3534', { y: 0.25, sy: 0.55, jitter: 0.1, seed, shade: 0.1 }));
+  const cols = ['#1c1726', '#2a2236', '#4b3a66', '#140f1c'];
+  const n = 5 + Math.floor(rng() * 3);
+  for (let i = 0; i < n; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = i === 0 ? 0 : randRange(rng, 0.2, 0.6);
+    const len = i === 0 ? randRange(rng, 1.2, 1.6) : randRange(rng, 0.5, 1.0);
+    const g = new THREE.OctahedronGeometry(0.5, 0);
+    g.scale(0.34, len, 0.28);
+    g.translate(0, len * 0.42, 0);
+    parts.push(part(g, cols[i % 4], { x: Math.cos(a) * d, y: 0.2, z: Math.sin(a) * d, rx: Math.sin(a) * d * 0.8, rz: -Math.cos(a) * d * 0.8, ry: rng() * 3, seed: seed + 10 + i, shade: 0.18 }));
+  }
+  return merge(parts);
+}
+
+function sulfurVent(rng, seed) {
+  const parts = [];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    parts.push(part(new THREE.DodecahedronGeometry(0.35, 0), i % 2 ? '#4a4442' : '#5a5250', { x: Math.cos(a) * 0.7, y: 0.2, z: Math.sin(a) * 0.7, jitter: 0.06, seed: seed + i, shade: 0.1 }));
+  }
+  parts.push(part(new THREE.CylinderGeometry(0.45, 0.6, 0.12, 8), '#2a2524', { y: 0.06, seed: seed + 9 }));
+  for (let i = 0; i < 9; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = randRange(rng, 0.2, 0.75);
+    parts.push(part(new THREE.OctahedronGeometry(randRange(rng, 0.1, 0.2), 0), i % 2 ? '#e8d23a' : '#f2e05a', { x: Math.cos(a) * d, y: 0.25 + rng() * 0.2, z: Math.sin(a) * d, sy: 1.6, seed: seed + 20 + i }));
+  }
+  return merge(parts);
+}
+
+function basaltRock(rng, seed) {
+  const parts = [];
+  const n = 5 + Math.floor(rng() * 3);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + rng() * 0.5;
+    const d = i === 0 ? 0 : randRange(rng, 0.45, 0.8);
+    const h = i === 0 ? randRange(rng, 2.0, 2.6) : randRange(rng, 0.8, 1.9);
+    parts.push(part(new THREE.CylinderGeometry(0.36, 0.38, h, 6), i % 2 ? '#4a4442' : '#3e3836', { x: Math.cos(a) * d, y: h / 2 - 0.1, z: Math.sin(a) * d, ry: rng(), seed: seed + i, shade: 0.08 }));
+    parts.push(part(new THREE.CylinderGeometry(0.36, 0.36, 0.04, 6), '#5d5653', { x: Math.cos(a) * d, y: h - 0.08, z: Math.sin(a) * d, seed: seed + 20 + i }));
+  }
+  return merge(parts);
+}
+
 const RESOURCE_BUILDERS = {
   palm, oak, pine, rock, pebble, stick, fiberBush, berryBush, coconut: coconutModel, fishSpot,
   vineTangle, coalOre, ironOre, crystal, caveMushroom,
+  cactus, desertShrub, sandstoneRock, copperRock, bonePile, snowPine, iceRock, frostBush, charredTree, obsidianRock, sulfurVent, basaltRock,
 };
 
 /** Kaynak türü için `variants` farklı geometri üretir (lod: uzak mesafe sürümü). */
@@ -687,7 +896,87 @@ function cloud(rng, seed) {
   return merge(parts);
 }
 
-const DECOR_BUILDERS = { boulder, crag, fern, bush, log, stump, mushrooms, shells, reeds, cloud };
+// ── Biyom süsleri ─────────────────────────────────────────
+function tintedBoulder(base, under, top, topAmount) {
+  return (rng, seed) => {
+    const parts = [];
+    parts.push(part(new THREE.IcosahedronGeometry(1, 1), base[seed % base.length], {
+      y: 0.45, sx: 1.2, sy: 0.85, sz: 1.0, ry: rng() * 3, jitter: 0.2, seed, shade: 0.1,
+    }));
+    parts.push(part(new THREE.IcosahedronGeometry(0.45, 1), under, { x: 0.95, y: 0.15, z: 0.35, jitter: 0.08, seed: seed + 1, shade: 0.1 }));
+    for (const p of parts) tintUpFaces(p, top, 0.6, topAmount);
+    return merge(parts);
+  };
+}
+const sandBoulder = tintedBoulder(['#c48a58', '#b57a4a', '#d29a64'], '#a86e40', '#e8c28c', 0.5);
+const snowBoulder = tintedBoulder(['#7b8590', '#6f7884', '#858f99'], '#646d78', '#f2f6f9', 0.95);
+function lavaBoulder(rng, seed) {
+  const parts = [];
+  parts.push(part(new THREE.IcosahedronGeometry(1, 1), seed % 2 ? '#3a3534' : '#2e2a29', { y: 0.4, sx: 1.25, sy: 0.8, sz: 1.0, ry: rng() * 3, jitter: 0.22, seed, shade: 0.12 }));
+  for (let i = 0; i < 5; i++) {
+    const a = rng() * Math.PI * 2;
+    parts.push(part(new THREE.BoxGeometry(0.5, 0.05, 0.08), '#ff5a1f', { x: Math.cos(a) * 0.9, y: 0.45 + rng() * 0.2, z: Math.sin(a) * 0.75, ry: a, rz: 0.4, seed: seed + 10 + i }));
+  }
+  return merge(parts);
+}
+
+function dryGrass(rng, seed) {
+  const parts = [];
+  const cols = ['#c9b06a', '#b89d58', '#d8c27a'];
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2 + rng() * 0.5;
+    const h = randRange(rng, 0.35, 0.7);
+    const tilt = randRange(rng, 0.2, 0.6);
+    parts.push(part(new THREE.ConeGeometry(0.03, h, 3), cols[i % 3], { x: Math.cos(a) * 0.08, y: h / 2, z: Math.sin(a) * 0.08, rx: Math.sin(a) * tilt, rz: -Math.cos(a) * tilt, seed: seed + i }));
+  }
+  return merge(parts);
+}
+
+function iceShard(rng, seed) {
+  const parts = [];
+  const n = 3 + Math.floor(rng() * 3);
+  for (let i = 0; i < n; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = i === 0 ? 0 : randRange(rng, 0.2, 0.5);
+    const len = randRange(rng, 0.6, 1.6);
+    const g = new THREE.OctahedronGeometry(0.5, 0);
+    g.scale(0.28, len, 0.28);
+    g.translate(0, len * 0.4, 0);
+    parts.push(part(g, i % 2 ? '#bfeaff' : '#e6f9ff', { x: Math.cos(a) * d, z: Math.sin(a) * d, rx: Math.sin(a) * 0.5, rz: -Math.cos(a) * 0.5, seed: seed + i, shade: 0.12 }));
+  }
+  parts.push(part(new THREE.IcosahedronGeometry(0.45, 0), '#f2f6f9', { y: 0.05, sy: 0.35, seed: seed + 20 }));
+  return merge(parts);
+}
+
+function skull(rng, seed) {
+  const bone = '#efe6d2';
+  return merge([
+    part(new THREE.IcosahedronGeometry(0.22, 1), bone, { y: 0.14, sz: 1.35, seed, shade: 0.04 }),
+    part(new THREE.BoxGeometry(0.07, 0.07, 0.03), '#3a3026', { x: -0.08, y: 0.19, z: 0.27, seed: seed + 1 }),
+    part(new THREE.BoxGeometry(0.07, 0.07, 0.03), '#3a3026', { x: 0.08, y: 0.19, z: 0.27, seed: seed + 2 }),
+    part(new THREE.ConeGeometry(0.05, 0.4, 5), bone, { x: 0.22, y: 0.25, z: 0.05, rz: -1.0, seed: seed + 3 }),
+    part(new THREE.ConeGeometry(0.05, 0.4, 5), bone, { x: -0.22, y: 0.25, z: 0.05, rz: 1.0, seed: seed + 4 }),
+  ]);
+}
+
+function ashSpire(rng, seed) {
+  const parts = [];
+  let y = 0;
+  for (let i = 0; i < 3; i++) {
+    const r = 0.9 - i * 0.22;
+    parts.push(part(new THREE.DodecahedronGeometry(r, 0), i % 2 ? '#3e3836' : '#4a4442', {
+      x: randRange(rng, -0.2, 0.2), y: y + r * 0.8, z: randRange(rng, -0.2, 0.2), sy: 1.5, ry: rng() * 3, jitter: 0.15, seed: seed + i, shade: 0.12,
+    }));
+    y += r * 1.6;
+  }
+  for (const p of parts) tintUpFaces(p, '#6d6863', 0.7, 0.5);
+  return merge(parts);
+}
+
+const DECOR_BUILDERS = {
+  boulder, crag, fern, bush, log, stump, mushrooms, shells, reeds, cloud,
+  sandBoulder, snowBoulder, lavaBoulder, dryGrass, iceShard, skull, ashSpire,
+};
 
 /** Süs türü için `variants` farklı geometri üretir. */
 export function buildDecorGeometries(key, variants = 1) {
@@ -1162,8 +1451,76 @@ function heldPaddle() {
   ]);
 }
 
+/** Kavisli pala: deri sargılı kabza, siper ve parça parça kıvrılan bakır ağız. */
+function heldScimitar() {
+  const parts = [
+    part(new THREE.CylinderGeometry(0.03, 0.032, 0.2, 6), '#5a3a22', { y: 0.02, seed: 770 }),
+    part(new THREE.TorusGeometry(0.032, 0.008, 4, 8), '#3d2716', { y: 0.06, rx: Math.PI / 2, seed: 771 }),
+    part(new THREE.BoxGeometry(0.2, 0.035, 0.05), '#c9a14a', { y: 0.135, seed: 772 }),
+    part(new THREE.SphereGeometry(0.03, 6, 4), '#c9a14a', { y: -0.09, seed: 773 }),
+  ];
+  let x = 0;
+  let y = 0.15;
+  let a = 0;
+  for (let i = 0; i < 6; i++) {
+    const len = 0.12;
+    const w = 0.07 - i * 0.004;
+    parts.push(part(new THREE.BoxGeometry(0.014, len, w), i % 2 ? '#d98a4a' : '#e39b5c', { x: 0, y: y + Math.cos(a) * len / 2, z: x + Math.sin(a) * len / 2, rx: a, seed: 774 + i }));
+    // ağzın parlak kenarı
+    parts.push(part(new THREE.BoxGeometry(0.016, len, 0.012), '#f6c08a', { x: 0, y: y + Math.cos(a) * len / 2 + Math.sin(a) * w * 0.5, z: x + Math.sin(a) * len / 2 - Math.cos(a) * w * 0.5 + 0.0, rx: a, seed: 790 + i }));
+    y += Math.cos(a) * len;
+    x += Math.sin(a) * len;
+    a -= 0.11;
+  }
+  parts.push(part(new THREE.ConeGeometry(0.035, 0.1, 4), '#e39b5c', { y: y + 0.03, z: x - 0.01, rx: a, sz: 0.3, seed: 800 }));
+  return merge(parts);
+}
+
+function heldCopperPickaxe() {
+  return merge([
+    part(new THREE.CylinderGeometry(0.03, 0.035, 0.78, 5), '#6b4a2e', { y: 0.26, seed: 810 }),
+    part(new THREE.BoxGeometry(0.06, 0.08, 0.3), '#d27a3b', { y: 0.6, z: 0.13, rx: 0.35, seed: 811 }),
+    part(new THREE.BoxGeometry(0.06, 0.08, 0.3), '#d27a3b', { y: 0.6, z: -0.13, rx: -0.35, seed: 812 }),
+    part(new THREE.ConeGeometry(0.035, 0.08, 4), '#f2a66b', { y: 0.55, z: 0.3, rx: 2.2, seed: 813 }),
+    part(new THREE.ConeGeometry(0.035, 0.08, 4), '#f2a66b', { y: 0.55, z: -0.3, rx: -2.2, seed: 814 }),
+    part(new THREE.BoxGeometry(0.08, 0.11, 0.09), '#8a5a34', { y: 0.6, seed: 815 }),
+  ]);
+}
+
+function heldIceSword() {
+  return merge([
+    part(new THREE.CylinderGeometry(0.028, 0.03, 0.22, 6), '#3d4a5a', { y: 0.02, seed: 820 }),
+    part(new THREE.OctahedronGeometry(0.04, 0), '#9fb4c8', { y: -0.11, seed: 821 }),
+    part(new THREE.BoxGeometry(0.26, 0.04, 0.06), '#aab1ba', { y: 0.14, seed: 822 }),
+    part(new THREE.OctahedronGeometry(0.035, 0), '#7fdcff', { x: 0.13, y: 0.14, seed: 823 }),
+    part(new THREE.OctahedronGeometry(0.035, 0), '#7fdcff', { x: -0.13, y: 0.14, seed: 824 }),
+    part(new THREE.BoxGeometry(0.075, 0.62, 0.02), '#a8e6ff', { y: 0.47, seed: 825 }),
+    part(new THREE.BoxGeometry(0.02, 0.6, 0.026), '#e6f9ff', { y: 0.47, seed: 826 }),
+    part(new THREE.ConeGeometry(0.053, 0.12, 4), '#c9f0ff', { y: 0.84, ry: Math.PI / 4, sz: 0.35, seed: 827 }),
+  ]);
+}
+
+function heldObsidianSword() {
+  const parts = [
+    part(new THREE.CylinderGeometry(0.03, 0.032, 0.22, 6), '#3a1f1a', { y: 0.02, seed: 830 }),
+    part(new THREE.SphereGeometry(0.035, 6, 4), '#c9a14a', { y: -0.1, seed: 831 }),
+    part(new THREE.BoxGeometry(0.28, 0.05, 0.07), '#c9a14a', { y: 0.14, seed: 832 }),
+    part(new THREE.OctahedronGeometry(0.04, 0), '#ff5a1f', { y: 0.14, z: 0.04, seed: 833 }),
+  ];
+  // tırtıklı, katman katman obsidyen ağız ve kızıl parlak kenar
+  for (let i = 0; i < 6; i++) {
+    const y = 0.22 + i * 0.11;
+    const w = 0.11 - i * 0.008;
+    parts.push(part(new THREE.BoxGeometry(w, 0.12, 0.03), i % 2 ? '#1c1726' : '#2a2236', { y, rz: (i % 2 ? 0.06 : -0.06), seed: 834 + i, jitter: 0.006 }));
+    parts.push(part(new THREE.BoxGeometry(0.012, 0.12, 0.032), '#ff6a2a', { x: w / 2, y, seed: 850 + i }));
+  }
+  parts.push(part(new THREE.ConeGeometry(0.055, 0.16, 4), '#1c1726', { y: 0.95, ry: Math.PI / 4, sz: 0.4, seed: 860 }));
+  return merge(parts);
+}
+
 const HELD_BUILDERS = {
   axe: heldAxe, pickaxe: heldPickaxe, spear: heldSpear, torch: heldTorch, knife: heldKnife, rod: heldRod, paddle: heldPaddle,
+  scimitar: heldScimitar, copper_pickaxe: heldCopperPickaxe, ice_sword: heldIceSword, obsidian_sword: heldObsidianSword,
 };
 
 export function buildHeldGeometry(key) {

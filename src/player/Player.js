@@ -3,6 +3,7 @@ import { PlayerModel } from './PlayerModel.js';
 import { PlayerStats } from './PlayerStats.js';
 import { Inventory } from './Inventory.js';
 import { ITEMS } from '../data/items.js';
+import { isHoldable } from '../world/ItemModels.js';
 import { BASE_INVENTORY_SIZE, HOTBAR_SIZE } from '../data/progression.js';
 import { dampAngle } from '../utils/math.js';
 
@@ -72,7 +73,15 @@ export class Player {
       this.model.setHeld('paddle');
       return;
     }
-    this.model.setHeld(this.selectedItem?.held ?? null);
+    this.model.setHeld(Player.heldKeyFor(this.selectedStack?.id));
+  }
+
+  /** Eldeki model anahtarı: alet → alet modeli, diğer eşyalar → 'item:<id>' (taşıtlar elde görünmez). */
+  static heldKeyFor(id) {
+    const def = id && ITEMS[id];
+    if (!def) return null;
+    if (def.held) return def.held;
+    return isHoldable(id) ? `item:${id}` : null;
   }
 
   /**

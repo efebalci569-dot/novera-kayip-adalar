@@ -324,6 +324,50 @@ export class AudioManager {
         this.noise({ dur: 1.4, vol: 0.18 * v, type: 'lowpass', freq: 500, freqEnd: 120, attack: 0.3 });
         this.tone({ freq: 55, freqEnd: 45, dur: 1.6, vol: 0.12 * v, attack: 0.3 });
         break;
+      case 'hiss':
+        this.noise({ dur: 0.45, vol: 0.18 * v, type: 'highpass', freq: 3200 * r, freqEnd: 2200, attack: 0.03 });
+        this.noise({ dur: 0.08, vol: 0.12 * v, freq: 900, q: 2, delay: 0.38 });
+        break;
+      case 'laugh':
+        for (let i = 0; i < 5; i++) this.tone({ type: 'sawtooth', freq: (520 + (i % 2) * 140) * r, freqEnd: 380, dur: 0.09, vol: 0.06 * v, delay: i * 0.12 });
+        break;
+      case 'growl':
+        this.noise({ dur: 0.7, vol: 0.22 * v, type: 'lowpass', freq: 260 * r, freqEnd: 140, q: 4, attack: 0.08 });
+        this.tone({ type: 'sawtooth', freq: 78 * r, freqEnd: 62, dur: 0.7, vol: 0.08 * v, attack: 0.08 });
+        break;
+      case 'chime':
+        [1318.5, 1760, 2349.3].forEach((fq, i) => this.tone({ type: 'sine', freq: fq * r, dur: 0.8, vol: 0.045 * v, delay: i * 0.09 }));
+        break;
+      case 'blob':
+        this.tone({ freq: 140 * r, freqEnd: 320, dur: 0.18, vol: 0.16 * v });
+        this.noise({ dur: 0.25, vol: 0.12 * v, type: 'lowpass', freq: 600, freqEnd: 200 });
+        break;
+      case 'roar':
+        this.noise({ dur: 1.6, vol: 0.4 * v, type: 'lowpass', freq: 420 * r, freqEnd: 120, q: 3, attack: 0.15 });
+        this.tone({ type: 'sawtooth', freq: 70 * r, freqEnd: 42, dur: 1.6, vol: 0.16 * v, attack: 0.15 });
+        this.tone({ type: 'square', freq: 110 * r, freqEnd: 60, dur: 1.2, vol: 0.05 * v, attack: 0.2, delay: 0.1 });
+        break;
+      case 'slam':
+        this.noise({ dur: 0.7, vol: 0.5 * v, type: 'lowpass', freq: 380 * r, freqEnd: 60, attack: 0.005 });
+        this.tone({ freq: 70 * r, freqEnd: 32, dur: 0.6, vol: 0.4 * v });
+        break;
+      case 'whoosh':
+        this.noise({ dur: 0.5, vol: 0.18 * v, freq: 400 * r, freqEnd: 2200, q: 1.2, attack: 0.1 });
+        break;
+      case 'fire':
+        this.noise({ dur: 0.6, vol: 0.25 * v, type: 'bandpass', freq: 900 * r, freqEnd: 300, q: 0.7, attack: 0.04 });
+        this.noise({ dur: 0.3, vol: 0.12 * v, type: 'highpass', freq: 3000, delay: 0.05 });
+        break;
+      case 'freeze':
+        [2637, 3136, 3951].forEach((fq, i) => this.tone({ type: 'triangle', freq: fq * r, dur: 0.35, vol: 0.05 * v, delay: i * 0.04 }));
+        this.noise({ dur: 0.3, vol: 0.14 * v, type: 'highpass', freq: 4000 });
+        break;
+      case 'warning':
+        this.tone({ type: 'triangle', freq: 440, freqEnd: 330, dur: 0.25, vol: 0.08 * v });
+        break;
+      case 'victory':
+        [392, 523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone({ type: 'triangle', freq: f, dur: 0.7, vol: 0.12 * v, attack: 0.02, delay: i * 0.13 }));
+        break;
       case 'howl': {
         const t0 = this.ctx.currentTime;
         const osc = this.ctx.createOscillator();

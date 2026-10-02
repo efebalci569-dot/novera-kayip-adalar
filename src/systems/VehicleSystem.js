@@ -23,7 +23,6 @@ export class VehicleSystem {
     this.mounted = null;
     this.geos = {};
     this.time = 0;
-    this.limitWarn = 0;
     this.bumpCooldown = 0;
     this.sailAccum = 0;
     this.wakeTimer = 0;
@@ -36,9 +35,8 @@ export class VehicleSystem {
 
   /** Su yüzeyi (göl ya da deniz) ve dalga katsayısı. */
   surface(x, z) {
-    const w = this.game.world;
-    const lake = w.island.lake;
-    if (Math.hypot(x - lake.x, z - lake.z) < lake.radius * 1.6) return { level: lake.level, wave: 0.18 };
+    const lake = this.game.world.islandAt(x, z)?.lake;
+    if (lake && !lake.frozen && Math.hypot(x - lake.x, z - lake.z) < lake.radius * 1.6) return { level: lake.level, wave: 0.18 };
     return { level: 0, wave: 1 };
   }
 
@@ -131,7 +129,8 @@ export class VehicleSystem {
         const z = b.z + Math.sin(a) * r;
         const h = ter.getHeight(x, z);
         if (h < 0.3 || ter.getSlope(x, z) > 0.9) continue;
-        if (g.world.island.isInLake(x, z) && h < g.world.island.lake.level + 0.2) continue;
+        const isl = g.world.islandAt(x, z);
+        if (isl?.isInLake(x, z) && h < isl.lake.level + 0.2) continue;
         if (g.world.collision.overlapsCircle(x, z, g.player.radius + 0.1)) continue;
         if (r < bestD) {
           bestD = r;
@@ -209,7 +208,8 @@ export class VehicleSystem {
     }
     const boost = inputEnabled && input.isDown('run') && throttle > 0 && g.player.stats.canRun ? 1.3 : 1;
     if (boost > 1) g.player.stats.stamina = Math.max(0, g.player.stats.stamina - 6 * dt);
-    b.speed = damp(b.speed, throttle * def.speed * boost, throttle ? 0.9 : 0.6, dt);
+    const wind = g.navigation.sailBoost(b);
+    b.speed = damp(b.speed, throttle * def.speed * boost * wind, throttle ? (wind > 1 ? 0.5 : 0.9) : 0.6, dt);
     const steerK = 0.35 + 0.65 * clamp(Math.abs(b.speed) / def.speed, 0, 1);
     b.yaw += turn * def.turn * steerK * dt * (b.speed < -0.05 ? -1 : 1);
 
@@ -246,20 +246,8 @@ export class VehicleSystem {
       }
     }
 
-    // açık deniz sınırı (2. ada için rota henüz yok)
-    const r = Math.hypot(b.x, b.z);
-    this.limitWarn -= dt;
-    if (r > def.range) {
-      b.x *= def.range / r;
-      b.z *= def.range / r;
-      b.speed *= 0.4;
-      if (this.limitWarn <= 0) {
-        this.limitWarn = 7;
-        g.notify(b.type === 'raft'
-          ? '🌊 Dalgalar sal için fazla sert. Açığa çıkmak için bir tekneye ihtiyacın var.'
-          : '⛈️ Ufuktaki adalara giden rota fırtınalı… Yeni adalara yolculuk yakında!', 'warn');
-      }
-    }
+    // deniz sınırları: sal kıyıdan ayrılamaz, tekne bilinmeyen adaların sisine giremez
+    if (g.navigation.limitBoat(b)) b.speed *= 0.4;
 
     // iz, kürek halkaları ve burun köpüğü
     const sp = Math.abs(b.speed);

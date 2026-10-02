@@ -149,40 +149,57 @@ export class GrassField {
     return mat;
   }
 
-  /** Arazi ızgarası üzerinde çimen yoğunluğu (0..1): bölge, eğim ve yüksekliğe göre. */
+  /**
+   * Her adanın arazi ızgarası üzerinde çimen yoğunluğu (0..1): bölge, eğim ve yüksekliğe göre.
+   * Renk tonu: 0 çayır, 1 orman, 2 dağ, 3 kuru (çöl/kül), 4 soğuk (tundra).
+   */
   buildDensityMap() {
-    const { terrain, island } = this.world;
-    const n = terrain.n;
-    this.map = new Float32Array(n * n);
-    this.tint = new Uint8Array(n * n); // 0 çayır, 1 orman, 2 dağ
-    for (let iz = 0; iz < n; iz++) {
-      for (let ix = 0; ix < n; ix++) {
-        const i = iz * n + ix;
-        const x = ix * terrain.step - terrain.half;
-        const z = iz * terrain.step - terrain.half;
-        const h = terrain.heights[i];
-        if (h < 0.6) continue;
-        const region = island.region(x, z, h);
-        const slope = terrain.getSlope(x, z);
-        let d = 0;
-        if (region === 'meadow') d = 1;
-        else if (region === 'forest') { d = 0.6; this.tint[i] = 1; }
-        else if (region === 'mountain') { d = 0.55 * (1 - smoothstep(30, 55, h)); this.tint[i] = 2; }
-        else if (region === 'beach') d = 0.35 * smoothstep(1.8, 2.8, h);
-        else if (region === 'lake') d = h > island.lake.level + 0.15 ? 0.8 : 0;
-        d *= 1 - smoothstep(0.6, 1.1, slope);
-        this.map[i] = d;
+    this.maps = new Map();
+    for (const terrain of this.world.terrains) {
+      const island = terrain.island;
+      const n = terrain.n;
+      const map = new Float32Array(n * n);
+      const tint = new Uint8Array(n * n);
+      for (let iz = 0; iz < n; iz++) {
+        for (let ix = 0; ix < n; ix++) {
+          const i = iz * n + ix;
+          const x = ix * terrain.step - terrain.half + terrain.cx;
+          const z = iz * terrain.step - terrain.half + terrain.cz;
+          const h = terrain.heights[i];
+          if (h < 0.6) continue;
+          const region = island.region(x, z, h);
+          const slope = terrain.getSlope(x, z);
+          let d = 0;
+          switch (region) {
+            case 'meadow': d = 1; break;
+            case 'forest': d = 0.6; tint[i] = 1; break;
+            case 'mountain': d = 0.55 * (1 - smoothstep(30, 55, h)); tint[i] = 2; break;
+            case 'beach': d = 0.35 * smoothstep(1.8, 2.8, h); break;
+            case 'lake': d = h > island.lake.level + 0.15 ? 0.8 : 0; break;
+            case 'd_oasis': d = h > island.lake.level + 0.15 ? 0.85 : 0; break;
+            case 'd_dunes': d = 0.05; tint[i] = 3; break;
+            case 'i_tundra': d = 0.3 * smoothstep(0.25, 0.45, island.noise.fbm(x * 0.02 + 30, z * 0.02 - 10, 3)); tint[i] = 4; break;
+            case 'v_ash': d = 0.12 * island.forestMask(x, z); tint[i] = 3; break;
+            default: d = 0;
+          }
+          d *= 1 - smoothstep(0.6, 1.1, slope);
+          if (island.isLava(x, z, 3)) d = 0;
+          map[i] = d;
+        }
       }
+      this.maps.set(terrain, { map, tint });
     }
   }
 
   sampleDensity(x, z) {
-    const t = this.world.terrain;
-    const ix = Math.round((x + t.half) / t.step);
-    const iz = Math.round((z + t.half) / t.step);
+    const t = this.world.terrain.at(x, z);
+    if (!t) return [0, 0];
+    const m = this.maps.get(t);
+    const ix = Math.round((x - t.cx + t.half) / t.step);
+    const iz = Math.round((z - t.cz + t.half) / t.step);
     if (ix < 0 || iz < 0 || ix >= t.n || iz >= t.n) return [0, 0];
     const i = iz * t.n + ix;
-    return [this.map[i], this.tint[i]];
+    return [m.map[i], m.tint[i]];
   }
 
   /** Yapıların altında çimen bitmesin (kulübe tabanı, kamp ateşi…). */
@@ -268,6 +285,8 @@ export class GrassField {
           let cr = v, cg = v, cb = v;
           if (tint === 1) { cr *= 0.78; cg *= 0.86; cb *= 0.78; }
           else if (tint === 2) { cr *= 1.05; cg *= 0.95; cb *= 0.8; }
+          else if (tint === 3) { cr *= 1.55; cg *= 1.12; cb *= 0.5; }
+          else if (tint === 4) { cr *= 1.25; cg *= 1.12; cb *= 0.95; }
           else if (r2 > 0.8) { cr *= 1.15; cg *= 1.02; cb *= 0.7; }
           gCol[gi * 3] = cr; gCol[gi * 3 + 1] = cg; gCol[gi * 3 + 2] = cb;
           gi++;

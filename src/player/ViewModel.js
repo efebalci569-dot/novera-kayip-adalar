@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildHeldGeometry } from '../world/Models.js';
+import { heldGeometry } from '../world/ItemModels.js';
 import { clamp, lerp, damp } from '../utils/math.js';
 
 // Kamera uzayında: -Z ileri, +Y yukarı, +X sağ.
@@ -13,7 +13,13 @@ const TOOL_POSE = {
   knife: { rx: -1.0, ry: Math.PI, rz: 0.3 },
   rod: { rx: -0.6, ry: 0, rz: 0.35 },
   paddle: { rx: -0.35, ry: 0, rz: 0.9 },
+  scimitar: { rx: -0.85, ry: Math.PI, rz: 0.4 },
+  copper_pickaxe: { rx: -0.85, ry: Math.PI, rz: 0.42 },
+  ice_sword: { rx: -0.9, ry: Math.PI, rz: 0.35 },
+  obsidian_sword: { rx: -0.9, ry: Math.PI, rz: 0.35 },
 };
+// sıradan eşyalar avucun üstünde, hafifçe döndürülmüş durur
+const ITEM_POSE = { rx: 0.25, ry: 0.6, rz: 0, x: 0, y: 0.07, z: -0.02, scale: 0.8 };
 // yüzerken iki kolun ortak dinlenme pozu (sağ kol; sol kol x ve dönüşlerde aynalanır)
 const SWIM_REST = { x: 0.17, y: -0.3, z: -0.38, rx: 0.25, ry: 0.1, rz: -0.15 };
 
@@ -98,11 +104,16 @@ export class ViewModel {
     this.equip = 0; // yeni alet: kol aşağıdan yukarı gelsin
     if (!key) return;
     if (!this.cache[key]) {
-      const geo = buildHeldGeometry(key);
+      const geo = heldGeometry(key);
       if (!geo) return;
       const mesh = new THREE.Mesh(geo, this.toolMaterial);
-      const p = TOOL_POSE[key] ?? TOOL_POSE.axe;
+      const item = key.startsWith('item:');
+      const p = item ? ITEM_POSE : TOOL_POSE[key] ?? TOOL_POSE.axe;
       mesh.rotation.set(p.rx, p.ry, p.rz);
+      if (item) {
+        mesh.position.set(p.x, p.y, p.z);
+        mesh.scale.setScalar(p.scale);
+      }
       if (key === 'torch') mesh.add(this.flame);
       this.cache[key] = mesh;
     }

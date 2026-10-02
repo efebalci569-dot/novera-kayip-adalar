@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { LANDMARKS } from '../data/landmarks.js';
-import { part, merge, sharedMaterials, hangingVine } from './Models.js';
+import { part, merge, sharedMaterials, hangingVine, tintUpFaces } from './Models.js';
+
+const tintUpFacesSafe = (g, color) => tintUpFaces(g, color, 0.55, 0.75);
 import { mulberry32, randRange } from '../utils/math.js';
 
 function glyphTexture(kind) {
@@ -75,15 +77,16 @@ export class Landmarks {
     this.time = 0;
     this.animated = [];
 
-    const pts = world.island.landmarks;
-    for (const [id, def] of Object.entries(LANDMARKS)) {
-      const p = pts[id];
-      if (!p) continue;
-      const inCave = def.cave && world.cave;
-      const y = inCave ? world.cave.floorHeight(p.x, p.z) : world.terrain.getHeight(p.x, p.z);
-      const entry = { id, def, x: p.x, y, z: p.z, used: false, discovered: false, interactPoint: { x: p.x, y, z: p.z }, cave: !!inCave };
-      this.list.push(entry);
-      this.byId[id] = entry;
+    for (const isl of world.islands) {
+      for (const [id, def] of Object.entries(LANDMARKS)) {
+        const p = isl.landmarks[id];
+        if (!p) continue;
+        const inCave = def.cave && world.cave;
+        const y = inCave ? world.cave.floorHeight(p.x, p.z) : world.terrain.getHeight(p.x, p.z);
+        const entry = { id, def, island: isl.id, x: p.x, y, z: p.z, used: false, discovered: false, interactPoint: { x: p.x, y, z: p.z }, cave: !!inCave };
+        this.list.push(entry);
+        this.byId[id] = entry;
+      }
     }
 
     this.buildWreck(this.byId.wreck);
@@ -92,18 +95,35 @@ export class Landmarks {
     this.buildDoor(this.byId.sealed_door);
     if (this.byId.cave_entrance) this.buildCaveEntrance(this.byId.cave_entrance);
     if (this.byId.miner_camp) this.buildMinerCamp(this.byId.miner_camp);
+    for (const e of this.list) {
+      if (e.def.altar) this.buildAltar(e);
+      else if (e.id === 'desert_ruins') this.buildRuins(e);
+      else if (e.id === 'frozen_camp') this.buildFrozenCamp(e);
+      else if (e.id === 'obsidian_shrine') this.buildShrine(e);
+    }
 
     for (const entry of this.list) this.registerInteractable(entry);
   }
 
-  /** Ağaçların/kaynakların bu noktalara çıkmaması için hariç tutma bölgeleri. */
+  /**
+   * Ağaçların/kaynakların bu noktalara çıkmaması için hariç tutma bölgeleri.
+   * Ana adanın sunak arenası burada değil (eski kayıtlarla kaynak sırası değişmesin diye
+   * arena sonradan temizlenir, bkz. arenaZones).
+   */
   exclusionZones() {
     const r = { wreck: 9, old_camp: 11, rune_wave: 4, rune_root: 4, rune_flame: 4, sealed_door: 9, cave_entrance: 12 };
-    const zones = this.list.filter((e) => !e.cave).map((e) => ({ x: e.x, z: e.z, r: r[e.id] ?? 5 }));
+    const zones = this.list
+      .filter((e) => !e.cave && !(e.island === 'novera' && e.def.altar))
+      .map((e) => ({ x: e.x, z: e.z, r: e.def.arena ? e.def.arena + 2 : r[e.id] ?? 7 }));
     // enkaz sandıklarının bulunduğu kumsal
     const w = this.byId.wreck;
     if (w) zones.push({ x: w.interactPoint.x, z: w.interactPoint.z, r: 6 });
     return zones;
+  }
+
+  /** Boss sunaklarının çevresindeki dövüş alanları. */
+  arenaZones() {
+    return this.list.filter((e) => e.def.arena).map((e) => ({ x: e.x, z: e.z, r: e.def.arena }));
   }
 
   staticMesh(parts, x, y, z, yaw = 0, { shadow = true, group = this.group } = {}) {
@@ -410,13 +430,187 @@ export class Landmarks {
     e.keepLight = true;
   }
 
+  // ── Boss sunakları ────────────────────────────────────────
+  buildAltar(e) {
+    const ter = this.world.terrain;
+    const col = this.world.collision;
+    const style = e.def.altar;
+    const rng = mulberry32(4000 + e.id.length * 31);
+    const parts = [];
+    const yAt = (lx, lz) => ter.getHeight(e.x + lx, e.z + lz) - e.y;
+    const ring = (n, r, fn) => {
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + 0.3;
+        fn(Math.cos(a) * r, Math.sin(a) * r, a, i);
+      }
+    };
+    let glowColor = '#7be35a';
+    if (style === 'guardian') {
+      // yosunlu dikili taşlar çemberi ve köklerin sardığı taş sunak
+      ring(7, 10, (lx, lz, a, i) => {
+        const h = randRange(rng, 3.0, 4.4);
+        const p = part(new THREE.BoxGeometry(0.9, h, 0.6, 1, 3, 1), i % 2 ? '#7b7a72' : '#6e6d66', {
+          x: lx, y: yAt(lx, lz) + h / 2 - 0.3, z: lz, ry: -a, rz: randRange(rng, -0.08, 0.08), jitter: 0.06, seed: 4100 + i, shade: 0.06,
+        });
+        parts.push(tintUpFacesSafe(p, '#5e8f3a'));
+        col.addCircle(e.x + lx, e.z + lz, 0.6, e);
+      });
+      parts.push(part(new THREE.CylinderGeometry(1.25, 1.5, 0.9, 8), '#6e6a72', { y: yAt(0, 0) + 0.4, seed: 4120, shade: 0.05 }));
+      parts.push(part(new THREE.TorusGeometry(0.75, 0.18, 5, 12), '#5c5860', { y: yAt(0, 0) + 0.9, rx: Math.PI / 2, seed: 4121 }));
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        parts.push(part(new THREE.CylinderGeometry(0.1, 0.16, 2.4, 5), '#5a3d22', { x: Math.cos(a) * 1.35, y: yAt(0, 0) + 0.3, z: Math.sin(a) * 1.35, rz: Math.cos(a) * 1.1, rx: -Math.sin(a) * 1.1, seed: 4130 + i }));
+      }
+      col.addCircle(e.x, e.z, 1.5, e);
+    } else if (style === 'sand_king') {
+      glowColor = '#ffb347';
+      // basamaklı kumtaşı kaide, köşelerde kırık sütunlar
+      parts.push(part(new THREE.BoxGeometry(6.4, 0.4, 6.4), '#d9a86c', { y: yAt(0, 0) - 0.05, seed: 4200, shade: 0.04 }));
+      parts.push(part(new THREE.BoxGeometry(4.2, 0.4, 4.2), '#c98f55', { y: yAt(0, 0) + 0.35, seed: 4201, shade: 0.04 }));
+      parts.push(part(new THREE.BoxGeometry(1.8, 1.1, 1.2), '#e2b47a', { y: yAt(0, 0) + 1.1, seed: 4202, shade: 0.04 }));
+      parts.push(part(new THREE.BoxGeometry(1.9, 0.12, 1.3), '#d27a3b', { y: yAt(0, 0) + 1.7, seed: 4203 }));
+      // akrep oyması
+      parts.push(part(new THREE.BoxGeometry(0.5, 0.25, 0.04), '#5b3a29', { y: yAt(0, 0) + 1.1, z: 0.61, seed: 4204 }));
+      parts.push(part(new THREE.BoxGeometry(0.08, 0.4, 0.04), '#5b3a29', { x: -0.3, y: yAt(0, 0) + 1.3, z: 0.61, rz: 0.5, seed: 4205 }));
+      ring(4, 11, (lx, lz, a, i) => {
+        const h = randRange(rng, 3.5, 6.5);
+        parts.push(part(new THREE.CylinderGeometry(0.55, 0.65, h, 8), i % 2 ? '#d9a86c' : '#cf9a62', { x: lx, y: yAt(lx, lz) + h / 2 - 0.2, z: lz, seed: 4210 + i, shade: 0.05 }));
+        parts.push(part(new THREE.BoxGeometry(1.5, 0.35, 1.5), '#c98f55', { x: lx, y: yAt(lx, lz) - 0.05, z: lz, seed: 4220 + i }));
+        col.addCircle(e.x + lx, e.z + lz, 0.75, e);
+      });
+      col.addBox(e.x, e.z, 0.95, 0.65, 0, e);
+      col.addPlatform(e.x, e.z, 3.2, 3.2, 0, e.y + 0.15, e);
+      col.addPlatform(e.x, e.z, 2.1, 2.1, 0, e.y + 0.55, e);
+    } else if (style === 'frost_giant') {
+      glowColor = '#7fdcff';
+      ring(6, 10.5, (lx, lz, a, i) => {
+        const h = randRange(rng, 3.5, 5.5);
+        const g = new THREE.OctahedronGeometry(0.5, 0);
+        g.scale(1.3, h, 1.3);
+        g.translate(0, h * 0.42, 0);
+        parts.push(part(g, i % 2 ? '#bfeaff' : '#9fd8ff', { x: lx, y: yAt(lx, lz) - 0.3, z: lz, ry: a, rz: randRange(rng, -0.1, 0.1), seed: 4300 + i, shade: 0.12 }));
+        col.addCircle(e.x + lx, e.z + lz, 0.6, e);
+      });
+      parts.push(part(new THREE.IcosahedronGeometry(1.8, 1), '#f2f6f9', { y: yAt(0, 0) - 0.6, sy: 0.5, seed: 4320 }));
+      parts.push(part(new THREE.BoxGeometry(1.6, 1.2, 1.1), '#a9d9ef', { y: yAt(0, 0) + 0.6, seed: 4321, jitter: 0.05, shade: 0.08 }));
+      parts.push(part(new THREE.TorusGeometry(0.55, 0.12, 5, 12), '#e6f9ff', { y: yAt(0, 0) + 1.25, rx: Math.PI / 2, seed: 4322 }));
+      col.addBox(e.x, e.z, 0.85, 0.6, 0, e);
+    } else {
+      glowColor = '#ff6a1f';
+      ring(6, 10.5, (lx, lz, a, i) => {
+        const h = randRange(rng, 4.0, 6.0);
+        const g = new THREE.ConeGeometry(0.75, h, 4);
+        g.translate(0, h / 2, 0);
+        parts.push(part(g, i % 2 ? '#1c1726' : '#2a2236', { x: lx, y: yAt(lx, lz) - 0.2, z: lz, ry: a, seed: 4400 + i, shade: 0.15 }));
+        parts.push(part(new THREE.BoxGeometry(0.06, h * 0.6, 0.06), '#ff5a1f', { x: lx * 0.95, y: yAt(lx, lz) + h * 0.3, z: lz * 0.95, seed: 4410 + i }));
+        col.addCircle(e.x + lx, e.z + lz, 0.7, e);
+      });
+      parts.push(part(new THREE.CylinderGeometry(1.3, 1.6, 1.0, 6), '#3e3836', { y: yAt(0, 0) + 0.4, seed: 4420, shade: 0.06 }));
+      parts.push(part(new THREE.CylinderGeometry(0.85, 0.85, 0.06, 12), '#ff7a2a', { y: yAt(0, 0) + 0.93, seed: 4421 }));
+      col.addCircle(e.x, e.z, 1.6, e);
+    }
+    this.staticMesh(parts, e.x, e.y, e.z, 0);
+    // sunak hazır/uyanık olunca parlayan küre
+    const glow = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.35, 1),
+      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0, toneMapped: false, depthWrite: false }),
+    );
+    glow.position.set(e.x, e.y + 2.4, e.z);
+    this.group.add(glow);
+    e.altarGlow = glow;
+    e.glowState = 0; // 0 sönük · 1 boss uyanık · 2 boss yenildi
+    this.animated.push({ type: 'altar', entry: e });
+    e.light = this.world.lights.add({ x: e.x, y: e.y + 2.4, z: e.z, color: glowColor, intensity: 0, distance: 14, flicker: true, priority: 10 });
+    e.keepLight = true;
+    e.interactPoint = { x: e.x, y: e.y + (style === 'sand_king' ? 0.75 : 0), z: e.z + (style === 'sand_king' ? 1.3 : 1.8) };
+  }
+
+  // ── Hikâye noktaları (yeni adalar) ─────────────────────────
+  buildRuins(e) {
+    const ter = this.world.terrain;
+    const col = this.world.collision;
+    const rng = mulberry32(4500);
+    const parts = [];
+    const yAt = (lx, lz) => ter.getHeight(e.x + lx, e.z + lz) - e.y;
+    const cols = [[-3, -2, 3.2], [-1, -3.2, 1.6], [2.2, -2.6, 2.6], [3.6, 0.4, 0.9]];
+    cols.forEach(([lx, lz, h], i) => {
+      parts.push(part(new THREE.CylinderGeometry(0.45, 0.52, h, 8), i % 2 ? '#d9a86c' : '#cf9a62', { x: lx, y: yAt(lx, lz) + h / 2 - 0.2, z: lz, jitter: 0.03, seed: 4510 + i, shade: 0.05 }));
+      col.addCircle(e.x + lx, e.z + lz, 0.55, e);
+    });
+    // devrik sütun ve yarı gömülü dev baş
+    parts.push(part(new THREE.CylinderGeometry(0.45, 0.45, 3.4, 8), '#d2a06a', { x: -0.5, y: yAt(-0.5, 2.6) + 0.3, z: 2.6, rz: Math.PI / 2, ry: 0.4, seed: 4520 }));
+    parts.push(part(new THREE.BoxGeometry(1.6, 1.4, 1.4), '#c98f55', { x: 3.2, y: yAt(3.2, 3) + 0.4, z: 3, ry: -0.6, rx: 0.3, seed: 4521, shade: 0.06 }));
+    parts.push(part(new THREE.BoxGeometry(0.3, 0.12, 0.05), '#5b3a29', { x: 2.95, y: yAt(3.2, 3) + 0.65, z: 3.62, ry: -0.6, seed: 4522 }));
+    parts.push(part(new THREE.BoxGeometry(0.3, 0.12, 0.05), '#5b3a29', { x: 3.45, y: yAt(3.2, 3) + 0.65, z: 3.4, ry: -0.6, seed: 4523 }));
+    // yazıtlı taş
+    parts.push(part(new THREE.BoxGeometry(1.4, 1.0, 0.35), '#e2b47a', { x: 0, y: yAt(0, 0) + 0.45, z: 0, rx: -0.15, seed: 4524, shade: 0.04 }));
+    for (let i = 0; i < 4; i++) parts.push(part(new THREE.BoxGeometry(0.9 - i * 0.12, 0.05, 0.02), '#8a5a34', { y: yAt(0, 0) + 0.75 - i * 0.14, z: 0.19, seed: 4530 + i }));
+    for (let i = 0; i < 5; i++) parts.push(part(new THREE.DodecahedronGeometry(randRange(rng, 0.2, 0.45), 0), '#d9a86c', { x: randRange(rng, -4, 4), y: yAt(0, 0) + 0.1, z: randRange(rng, -4, 4), seed: 4540 + i }));
+    this.staticMesh(parts, e.x, e.y, e.z, 0);
+    col.addBox(e.x, e.z, 0.7, 0.25, 0, e);
+    e.interactPoint = { x: e.x, y: e.y, z: e.z + 0.6 };
+  }
+
+  buildFrozenCamp(e) {
+    const ter = this.world.terrain;
+    const col = this.world.collision;
+    const parts = [];
+    const yAt = (lx, lz) => ter.getHeight(e.x + lx, e.z + lz) - e.y;
+    const tent = part(new THREE.ConeGeometry(1.6, 2.0, 4), '#8a6a45', { x: -2.2, y: yAt(-2.2, 1) + 0.9, z: 1, ry: Math.PI / 4, seed: 4600, shade: 0.06 });
+    parts.push(tintUpFacesSafe(tent, '#f2f6f9'));
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      parts.push(part(new THREE.DodecahedronGeometry(0.16, 0), '#6f7884', { x: 1 + Math.cos(a) * 0.5, y: yAt(1, 1) + 0.07, z: 1 + Math.sin(a) * 0.5, sy: 0.7, seed: 4610 + i }));
+    }
+    parts.push(part(new THREE.BoxGeometry(0.8, 0.55, 0.55), '#7a5a3a', { x: -0.4, y: yAt(-0.4, -1.4) + 0.27, z: -1.4, seed: 4620, shade: 0.05 }));
+    parts.push(part(new THREE.BoxGeometry(0.82, 0.08, 0.57), '#f2f6f9', { x: -0.4, y: yAt(-0.4, -1.4) + 0.58, z: -1.4, seed: 4621 }));
+    parts.push(part(new THREE.BoxGeometry(0.1, 0.04, 1.9), '#a33a2e', { x: 2.2, y: yAt(2.2, -0.5) + 0.05, z: -0.5, ry: 0.2, seed: 4622 }));
+    parts.push(part(new THREE.BoxGeometry(0.1, 0.04, 1.9), '#a33a2e', { x: 2.45, y: yAt(2.45, -0.5) + 0.05, z: -0.5, ry: 0.25, seed: 4623 }));
+    this.staticMesh(parts, e.x, e.y, e.z, 0);
+    col.addCircle(e.x - 2.2, e.z + 1, 1.2, e);
+    col.addBox(e.x - 0.4, e.z - 1.4, 0.42, 0.3, 0, e);
+    e.interactPoint = { x: e.x - 0.4, y: e.y, z: e.z - 1.4 };
+  }
+
+  buildShrine(e) {
+    const ter = this.world.terrain;
+    const col = this.world.collision;
+    const parts = [];
+    const yAt = (lx, lz) => ter.getHeight(e.x + lx, e.z + lz) - e.y;
+    const g = new THREE.BoxGeometry(1.1, 4.2, 1.1, 1, 3, 1);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const k = 1 - Math.max(0, (pos.getY(i) + 2.1) / 4.2) * 0.55;
+      pos.setX(i, pos.getX(i) * k);
+      pos.setZ(i, pos.getZ(i) * k);
+    }
+    parts.push(part(g, '#1c1726', { y: yAt(0, 0) + 2.0, seed: 4700, shade: 0.12 }));
+    parts.push(part(new THREE.ConeGeometry(0.32, 0.6, 4), '#2a2236', { y: yAt(0, 0) + 4.4, ry: Math.PI / 4, seed: 4701 }));
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      parts.push(part(new THREE.DodecahedronGeometry(0.25, 0), '#3e3836', { x: Math.cos(a) * 1.6, y: yAt(Math.cos(a) * 1.6, Math.sin(a) * 1.6) + 0.1, z: Math.sin(a) * 1.6, sy: 0.6, seed: 4710 + i }));
+    }
+    this.staticMesh(parts, e.x, e.y, e.z, 0);
+    const glyph = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.7, 0.7),
+      new THREE.MeshBasicMaterial({ map: glyphTexture('flame'), color: '#ff8a3d', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
+    );
+    glyph.position.set(e.x, e.y + 2.2, e.z + 0.48);
+    this.group.add(glyph);
+    e.glyph = glyph;
+    this.animated.push({ type: 'glyph', entry: e, mesh: glyph });
+    col.addCircle(e.x, e.z, 0.7, e);
+    e.interactPoint = { x: e.x, y: e.y, z: e.z + 0.9 };
+    e.light = this.world.lights.add({ x: e.x, y: e.y + 2.2, z: e.z + 0.8, color: '#ff8a3d', intensity: 2.6, distance: 8, flicker: true });
+  }
+
   registerInteractable(entry) {
     const ip = entry.interactPoint;
     this.world.addInteractable({
       kind: 'landmark',
       id: entry.id,
       x: ip.x, y: ip.y + 1, z: ip.z,
-      range: entry.id === 'sealed_door' || entry.id === 'cave_entrance' ? 4.5 : 3.2,
+      range: entry.id === 'sealed_door' || entry.id === 'cave_entrance' || entry.def.altar ? 4.5 : 3.2,
       pickRadius: entry.id === 'sealed_door' ? 2.2 : entry.id === 'cave_entrance' ? 2.0 : entry.def.glyph ? 1.0 : 0.85,
       pickHeight: entry.id === 'sealed_door' ? 3.6 : entry.id === 'cave_entrance' ? 2.6 : 1.6,
       getPrompt: (game) => game.exploration.landmarkPrompt(entry),
@@ -445,6 +639,15 @@ export class Landmarks {
       } else if (a.type === 'glyph') {
         const used = a.entry.used;
         a.mesh.material.opacity = used ? 0.18 : 0.75 + Math.sin(this.time * 2.2) * 0.25;
+      } else if (a.type === 'altar') {
+        const e = a.entry;
+        const st = e.glowState ?? 0;
+        const target = st === 1 ? 0.85 : st === 2 ? 0.35 : 0;
+        const m = e.altarGlow.material;
+        m.opacity += (target - m.opacity) * 0.05;
+        e.altarGlow.position.y = e.y + 2.4 + Math.sin(this.time * 1.6) * 0.15;
+        e.altarGlow.scale.setScalar(1 + Math.sin(this.time * 3) * 0.08 * (st === 1 ? 1 : 0.3));
+        if (e.light) e.light.intensity = m.opacity * 9;
       } else if (a.type === 'door') {
         const on = a.entry.used;
         for (const g of a.entry.socketGlows) g.material.opacity = on ? 0.7 + Math.sin(this.time * 2) * 0.25 : 0;

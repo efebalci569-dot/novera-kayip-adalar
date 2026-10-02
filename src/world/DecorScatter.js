@@ -37,6 +37,46 @@ const RULES = [
     test: (i) => i.lakeShore },
 ];
 
+// Yeni adaların süsleri (biyoma göre)
+const BIOME_DECOR = {
+  desert: [
+    { key: 'sandBoulder', variants: 3, count: 45, scale: [1.2, 3.0], spacing: 7, collider: 1.0, shadow: true, sink: 0.25, size: 1.2, block: 'Kaya',
+      test: (i) => i.region === 'd_dunes' && i.slope < 0.7 },
+    { key: 'sandBoulder', variants: 3, count: 50, scale: [2.0, 5.0], spacing: 8, collider: 1.0, shadow: true, sink: 0.3, size: 1.2, block: 'Kaya',
+      test: (i) => i.mesa > 0.15 },
+    { key: 'dryGrass', variants: 2, count: 280, scale: [0.8, 1.5], spacing: 1.8, avoidNodes: true, drawDist: 60, wind: true, size: 0.4,
+      test: (i) => i.region === 'd_dunes' || i.region === 'd_oasis' },
+    { key: 'skull', variants: 1, count: 14, scale: [0.9, 1.3], spacing: 8, avoidNodes: true, drawDist: 60, size: 0.4,
+      test: (i) => i.region === 'd_dunes' },
+    { key: 'shells', variants: 2, count: 60, scale: [0.9, 1.4], spacing: 3, avoidNodes: true, drawDist: 45, size: 0.5,
+      test: (i) => i.region === 'd_beach' && i.h > 0.25 && i.inland < 14 },
+    { key: 'reeds', variants: 2, count: 40, scale: [0.8, 1.3], spacing: 1.6, lake: true, drawDist: 90, wind: true, size: 0.5,
+      test: (i) => i.lakeShore },
+  ],
+  ice: [
+    { key: 'snowBoulder', variants: 3, count: 60, scale: [1.2, 3.0], spacing: 7, collider: 1.0, shadow: true, sink: 0.25, size: 1.2, block: 'Kaya',
+      test: (i) => (i.region === 'i_tundra' || i.region === 'i_forest') && i.slope < 0.7 },
+    { key: 'snowBoulder', variants: 3, count: 110, scale: [2.0, 6.0], spacing: 9, collider: 1.0, shadow: true, sink: 0.3, size: 1.2, block: 'Kaya',
+      test: (i) => i.region === 'i_peak' },
+    { key: 'crag', variants: 2, count: 45, scale: [2.0, 5.0], spacing: 10, collider: 0.85, shadow: true, sink: 0.5, size: 1.0, block: 'Kayalık',
+      test: (i) => i.region === 'i_peak' && i.h > 24 },
+    { key: 'iceShard', variants: 3, count: 90, scale: [0.8, 1.8], spacing: 4, collider: 0.35, avoidNodes: true, drawDist: 100, size: 0.5, block: 'Buz',
+      test: (i) => i.region === 'i_tundra' || i.region === 'i_shore' || i.region === 'i_peak' },
+    { key: 'log', variants: 2, count: 20, scale: [0.9, 1.25], spacing: 6, shadow: true, avoidNodes: true, drawDist: 110, size: 0.42, block: 'Devrik Kütük', log: 1.9,
+      test: (i) => i.region === 'i_forest' && i.slope < 0.4 },
+  ],
+  volcano: [
+    { key: 'lavaBoulder', variants: 3, count: 80, scale: [1.2, 3.2], spacing: 7, collider: 1.0, shadow: true, sink: 0.25, size: 1.2, block: 'Lav Kayası',
+      test: (i) => (i.region === 'v_ash' || i.region === 'v_slope') && i.slope < 0.8 },
+    { key: 'ashSpire', variants: 2, count: 55, scale: [2.0, 5.0], spacing: 10, collider: 0.85, shadow: true, sink: 0.5, size: 1.0, block: 'Kayalık',
+      test: (i) => i.region === 'v_slope' && i.h > 14 },
+    { key: 'dryGrass', variants: 2, count: 80, scale: [0.7, 1.2], spacing: 2.2, avoidNodes: true, drawDist: 50, wind: true, size: 0.4,
+      test: (i) => i.region === 'v_ash' && i.forest > 0.25 },
+    { key: 'stump', variants: 1, count: 25, scale: [0.8, 1.2], spacing: 4, collider: 0.5, shadow: true, sink: 0.05, drawDist: 110, size: 0.65, block: 'Kütük',
+      test: (i) => i.region === 'v_ash' },
+  ],
+};
+
 export class DecorScatter {
   constructor(world, exclusions) {
     this.world = world;
@@ -47,7 +87,19 @@ export class DecorScatter {
     this.items = new Map(); // ızgara hücresi → süs nesneleri (yerleştirme kontrolü ve gizleme için)
     this.culler = new DistanceCuller();
     this.windMaterial = createWindMaterial({ height: 1.8, amp: 0.1, flutter: 0.035 });
-    this.scatter(exclusions);
+    this.islandGroups = {};
+    for (const isl of world.islands) {
+      const g = new THREE.Group();
+      g.name = `decor:${isl.id}`;
+      this.group.add(g);
+      this.islandGroups[isl.id] = g;
+      this.scatter(isl, isl.biome === 'tropical' ? RULES : BIOME_DECOR[isl.biome] ?? [], exclusions);
+    }
+  }
+
+  setIslandVisible(id, vis) {
+    const g = this.islandGroups[id];
+    if (g) g.visible = vis;
   }
 
   /** (x,z) çevresindeki süs nesneleri. */
@@ -119,37 +171,40 @@ export class DecorScatter {
     list.push({ x, z, r });
   }
 
-  scatter(exclusions) {
-    const { terrain, island, collision, resources } = this.world;
+  scatter(island, rules, exclusions) {
+    const { terrain, collision, resources } = this.world;
     const rng = mulberry32(island.def.seed * 17 + 3);
     const lake = island.lake;
-    const blocked = (x, z) => exclusions.some((e) => Math.hypot(x - e.x, z - e.z) < e.r);
+    const blocked = (x, z) => exclusions.some((e) => Math.hypot(x - e.x, z - e.z) < e.r) || island.isLava(x, z, 2) || island.isOnIce(x, z);
+    const group = this.islandGroups[island.id];
 
-    for (const rule of RULES) {
+    for (const rule of rules) {
       const geos = buildDecorGeometries(rule.key, rule.variants);
       const items = [];
       for (let tries = 0; tries < rule.count * 40 && items.length < rule.count; tries++) {
         let x, z;
         if (rule.lake) {
+          if (!lake || lake.frozen) break;
           const a = rng() * Math.PI * 2;
           const r = lake.radius * randRange(rng, 1.15, 1.6);
           x = lake.x + Math.cos(a) * r;
           z = lake.z + Math.sin(a) * r;
         } else {
-          x = randRange(rng, -210, 210);
-          z = randRange(rng, -210, 210);
+          x = island.cx + randRange(rng, -210, 210);
+          z = island.cz + randRange(rng, -210, 210);
         }
         if (blocked(x, z)) continue;
         const h = terrain.getHeight(x, z);
         if (h < 0.15) continue;
-        const dl = Math.hypot(x - lake.x, z - lake.z);
+        const dl = lake ? Math.hypot(x - lake.x, z - lake.z) : Infinity;
         const info = {
           h,
           region: island.region(x, z, h),
           slope: terrain.getSlope(x, z),
           inland: island.inland(x, z),
           forest: island.forestMask(x, z),
-          lakeShore: dl > lake.radius * 1.1 && h > lake.level - 0.2 && h < lake.level + 0.8,
+          mesa: island.mesas.length ? island.mesaFactor(x, z) : 0,
+          lakeShore: !!lake && dl > lake.radius * 1.1 && h > lake.level - 0.2 && h < lake.level + 0.8,
         };
         if (!rule.lake && island.isInLake(x, z, 1)) continue;
         if (!rule.test(info)) continue;
@@ -177,7 +232,7 @@ export class DecorScatter {
         if (!cell) this.items.set(k, (cell = []));
         cell.push(item);
       }
-      const meshes = buildChunkedInstances(this.group, geos, items, rule.wind ? this.windMaterial : sharedMaterials.standard, {
+      const meshes = buildChunkedInstances(group, geos, items, rule.wind ? this.windMaterial : sharedMaterials.standard, {
         name: rule.key,
         chunkSize: rule.drawDist ? 50 : 120,
         castShadow: !!rule.shadow,

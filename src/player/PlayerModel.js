@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { buildHeldGeometry, sharedMaterials, part, merge } from '../world/Models.js';
+import { sharedMaterials, part, merge } from '../world/Models.js';
+import { heldGeometry } from '../world/ItemModels.js';
 import { defaultAppearance, sanitizeAppearance } from '../data/appearance.js';
 import { clamp, lerp, damp } from '../utils/math.js';
 
@@ -12,7 +13,14 @@ const HELD_POSE = {
   knife: { idleArm: -0.3, toolRot: Math.PI / 2 },
   rod: { idleArm: -0.7, toolRot: 0.9 },
   paddle: { idleArm: -0.9, toolRot: 0.3 },
+  scimitar: { idleArm: -0.3, toolRot: Math.PI / 2 },
+  copper_pickaxe: { idleArm: -0.15, toolRot: Math.PI / 2 },
+  ice_sword: { idleArm: -0.3, toolRot: Math.PI / 2 },
+  obsidian_sword: { idleArm: -0.3, toolRot: Math.PI / 2 },
 };
+// eldeki sıradan eşyalar (odun, taş, yiyecek…): kol hafifçe öne kalkar, eşya avuçta durur
+const ITEM_POSE = { idleArm: -0.5, toolRot: 0 };
+const poseOf = (key) => HELD_POSE[key] ?? (key?.startsWith('item:') ? ITEM_POSE : null);
 const TAU = Math.PI * 2;
 
 const easeOut = (t) => 1 - (1 - t) * (1 - t);
@@ -311,7 +319,7 @@ export class PlayerModel {
     this.heldMesh = null;
     if (!key) return;
     if (!this.heldCache[key]) {
-      const geo = buildHeldGeometry(key);
+      const geo = heldGeometry(key);
       if (!geo) return;
       const mesh = new THREE.Mesh(geo, sharedMaterials.standard);
       mesh.castShadow = true;
@@ -319,10 +327,11 @@ export class PlayerModel {
         this.flame.position.y = 0.72;
         mesh.add(this.flame);
       }
+      if (key.startsWith('item:')) mesh.position.set(0, -0.1, 0.07); // avucun içinde
       this.heldCache[key] = mesh;
     }
     this.heldMesh = this.heldCache[key];
-    this.heldMesh.rotation.x = HELD_POSE[key]?.toolRot ?? Math.PI / 2;
+    this.heldMesh.rotation.x = poseOf(key)?.toolRot ?? Math.PI / 2;
     this.flame.visible = key === 'torch';
     this.heldMesh.visible = !this.firstPerson && !this.hideHeld;
     this.hand.add(this.heldMesh);
@@ -363,7 +372,7 @@ export class PlayerModel {
       this.hideHeld = hide;
       if (this.heldMesh) this.heldMesh.visible = !this.firstPerson && !hide;
     }
-    const pose = HELD_POSE[this.heldKey] ?? { idleArm: 0 };
+    const pose = poseOf(this.heldKey) ?? { idleArm: 0 };
 
     // temel yürüyüş
     let legL = swing;
@@ -439,7 +448,7 @@ export class PlayerModel {
         armL = lerp(armL, -0.3, sb);
       } else {
         armL = lerp(armL, -0.35, sb);
-        armR = lerp(armR, -0.35 + (HELD_POSE[this.heldKey]?.idleArm ?? 0) * 0.5, sb);
+        armR = lerp(armR, -0.35 + (poseOf(this.heldKey)?.idleArm ?? 0) * 0.5, sb);
       }
     }
 

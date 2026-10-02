@@ -147,4 +147,9 @@ export const BUILDINGS = {
   },
 };
 
+for (const [id, def] of Object.entries(BUILDINGS)) {
+  def.emoji = def.icon;
+  def.icon = `{b:${id}}`;
+}
+
 export const BUILD_ORDER = ['campfire', 'bed', 'chest', 'workbench', 'crystal_lamp', 'hut', 'gazebo', 'cabin', 'stone_house'];

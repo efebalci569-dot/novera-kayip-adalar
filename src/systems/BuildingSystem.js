@@ -263,7 +263,8 @@ export class BuildingSystem {
       sum += h;
     }
     const y = def.platforms ? maxH : sum / pts.length;
-    if (wet || world.island.isInLake(x, z, Math.min(rect.hw, rect.hd))) return result(false, 'Suyun üzerine inşa edilemez', y);
+    if (wet || world.islandAt(x, z)?.isInLake(x, z, Math.min(rect.hw, rect.hd))) return result(false, 'Suyun üzerine inşa edilemez', y);
+    if (world.isLava(x, z, Math.max(rect.hw, rect.hd))) return result(false, 'Lavın üzerine inşa edilemez', y);
     const blocker = this.findOverlap(def, rect);
     if (blocker) return result(false, `${blocker} ile çakışıyor`, y);
     const span = Math.max(1, Math.min(rect.hw, rect.hd) * 1.25);
@@ -376,7 +377,7 @@ export class BuildingSystem {
     g.progression.addXP(def.xp ?? 10, 'build');
     g.notify(`${def.icon} ${def.name} inşa edildi!`, 'success');
     if (def.shelter && def.platforms) {
-      g.state.spawnPoint = { x, y: y + (def.platforms[0]?.top ?? 0) + 0.1, z };
+      g.setSpawnPoint({ x, y: y + (def.platforms[0]?.top ?? 0) + 0.1, z });
       g.notify(`${def.icon} Doğma noktan buraya ayarlandı.`, 'info');
     }
     if (type === 'bed') {
@@ -577,7 +578,7 @@ export class BuildingSystem {
     if (it.panel === 'crafting') g.ui.open('crafting', { station: it.station });
     else if (it.panel === 'container') g.ui.open('container', { inventory: b.storage, title: def.name });
     else if (it.handler === 'sleep') {
-      g.state.spawnPoint = { x: b.x, y: b.y + 0.5, z: b.z };
+      g.setSpawnPoint({ x: b.x, y: b.y + 0.5, z: b.z });
       if (!g.time.canSleep) {
         g.notify('Henüz uyku vakti değil. Akşam 19:00\'dan sonra uyuyabilirsin. (Doğma noktası yatağına ayarlandı.)', 'info');
         return;

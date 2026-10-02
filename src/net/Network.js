@@ -8,15 +8,17 @@ import { sanitizeAppearance } from '../data/appearance.js';
 // Kendi PeerJS sunucunuzu kullanmak için adrese ?peer=alanadi:port ekleyin.
 
 export const MAX_PLAYERS = 8;
-const NET_VERSION = 3;
+const NET_VERSION = 4;
 const ID_PREFIX = 'novera-kayip-adalar-oda-';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const STATE_INTERVAL = 1 / 12; // oyuncu konumu (s)
 const ANIMAL_INTERVAL = 0.2; // hayvan durumu (ev sahibi)
+const ENEMY_INTERVAL = 0.2; // düşman durumu (ev sahibi → her misafire yakınındakiler)
+const ENEMY_RANGE = 170;
 const TIME_INTERVAL = 1;
 const GUEST_SAVE_INTERVAL = 30;
 // ev sahibinin misafirden alıp diğer misafirlere aynen ilettiği mesajlar
-const RELAY = new Set(['p', 'node', 'build', 'chest', 'boat', 'chat', 'look']);
+const RELAY = new Set(['p', 'node', 'build', 'chest', 'boat', 'chat', 'look', 'reveal']);
 
 function genCode() {
   let s = '';
@@ -59,6 +61,7 @@ export class NetworkManager {
     this.sleepers = new Set();
     this.stateTimer = 0;
     this.animalTimer = 0;
+    this.enemyTimer = 0;
     this.timeTimer = 0;
     this.guestSaveTimer = GUEST_SAVE_INTERVAL;
     this.applyingChest = false;
@@ -327,6 +330,28 @@ export class NetworkManager {
       case 'aButOk': g.animals.onButcherOk(msg); break;
       case 'aButNo': g.animals.onButcherDenied(msg); break;
       case 'time': if (this.isClient) g.applyHostTime(msg); break;
+      // adalar, düşmanlar ve boss'lar
+      case 'reveal': g.navigation.reveal(msg.id, { broadcast: false }); break;
+      case 'enemies': if (this.isClient) g.enemies.applySnapshot(msg.l); break;
+      case 'eHit': if (this.isHost) g.enemies.remoteHit(msg); break;
+      case 'eKill': if (this.isClient) g.enemies.reward(msg.type, Array.isArray(msg.drops) ? msg.drops : []); break;
+      case 'eProj': if (this.isClient) g.enemies.applyRemoteProjectile(msg); break;
+      case 'pDmg':
+        if (this.isClient) {
+          g.hurtPlayer(Math.min(200, Number(msg.amt) || 0), cleanText(msg.src, 40), {
+            poison: !!msg.poison, burn: !!msg.burn, chill: !!msg.chill, fromX: Number(msg.fx), fromZ: Number(msg.fz),
+          });
+        }
+        break;
+      case 'boss': if (this.isClient) g.bosses.applyNet(msg); break;
+      case 'bSpawn': if (this.isClient) g.bosses.applySpawn(msg); break;
+      case 'bTel': if (this.isClient && msg.d) g.bosses.addTelegraph(msg.d); break;
+      case 'bRage': if (this.isClient && g.bosses.boss) g.bosses.boss.enraged = true; break;
+      case 'bSleep': if (this.isClient) g.bosses.putToSleep(false); break;
+      case 'bDead': if (this.isClient) g.bosses.applyRemoteDead(msg); break;
+      case 'bHit': if (this.isHost) g.bosses.remoteHit(msg); break;
+      case 'bSum': if (this.isHost) g.bosses.remoteSummon(msg); break;
+      case 'bNo': if (this.isClient) g.bosses.refund(msg); break;
       case 'chat': g.ui.hud.chatMessage(this.nameOf(msg.from), cleanText(msg.text)); break;
       case 'look': {
         const p = this.players.get(msg.from);
@@ -429,6 +454,14 @@ export class NetworkManager {
       if (this.animalTimer <= 0 && this.players.size) {
         this.animalTimer = ANIMAL_INTERVAL;
         this.broadcast({ t: 'animals', l: g.animals.snapshot(), from: this.selfId });
+      }
+      this.enemyTimer -= dt;
+      if (this.enemyTimer <= 0 && this.players.size) {
+        this.enemyTimer = ENEMY_INTERVAL;
+        // her misafire yalnızca yakınındaki düşmanlar
+        for (const r of g.remotePlayers.positions()) {
+          this.sendTo(r.id, { t: 'enemies', l: g.enemies.snapshot(r.x, r.z, ENEMY_RANGE), from: this.selfId });
+        }
       }
       this.timeTimer -= dt;
       if (this.timeTimer <= 0 && this.players.size) {

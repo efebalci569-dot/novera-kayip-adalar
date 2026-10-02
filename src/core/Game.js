@@ -20,11 +20,15 @@ import { InteractionSystem } from '../systems/InteractionSystem.js';
 import { QuestSystem } from '../systems/QuestSystem.js';
 import { AnimalSystem } from '../systems/AnimalSystem.js';
 import { VehicleSystem } from '../systems/VehicleSystem.js';
+import { NavigationSystem } from '../systems/NavigationSystem.js';
+import { EnemySystem } from '../systems/EnemySystem.js';
+import { BossSystem } from '../systems/BossSystem.js';
 import { NetworkManager } from '../net/Network.js';
 import { RemotePlayers } from '../net/RemotePlayers.js';
 import { UIManager } from '../ui/UIManager.js';
 import { DIFFICULTY_ORDER, difficultyDef } from '../data/difficulty.js';
-import { smoothstep } from '../utils/math.js';
+import { ITEMS } from '../data/items.js';
+import { clamp, smoothstep } from '../utils/math.js';
 
 const AUTOSAVE_INTERVAL = 60;
 const START_ITEMS = { berries: 2 };
@@ -65,6 +69,13 @@ export class Game {
     this.remotePlayers = new RemotePlayers(this);
     this.animals = new AnimalSystem(this);
     this.vehicles = new VehicleSystem(this);
+    this.navigation = new NavigationSystem(this);
+    this.enemies = new EnemySystem(this);
+    this.bosses = new BossSystem(this);
+    this.effects = { poison: 0, burn: 0, chill: 0 }; // vuruşların bıraktığı etkiler (s)
+    this.cold = 0; // buz adasında üşüme (0..1)
+    this.statusEffects = [];
+    this.envTimer = 0;
 
     this.progression = new ProgressionSystem(this);
     this.exploration = new ExplorationSystem(this);
@@ -132,6 +143,11 @@ export class Game {
     });
     bus.on('player:damaged', ({ source }) => {
       if (source !== 'starving' && source !== 'thirst') this.audio.play('hurt');
+    });
+    bus.on('island:entered', ({ id, first }) => {
+      if (first && id !== 'novera' && !this.state.spawnPoints[id]) {
+        setTimeout(() => this.notify('⛺ Bu adada ölürsen varış sahilinde uyanırsın. Burada bir barınak kurarsan doğma noktan orası olur.', 'info'), 6000);
+      }
     });
   }
 
@@ -431,6 +447,7 @@ export class Game {
       this.player.refreshHeld();
     }
     this.ui.hud.fade(true, '', '');
+    this.deathPos = { x: this.player.position.x, z: this.player.position.z };
     const dropped = def.deathDrop && !def.permadeath ? this.dropInventoryOnDeath() : false;
     this.state.stats.deaths++;
     if (def.permadeath) {
@@ -468,7 +485,10 @@ export class Game {
     }
     const wasInCave = this.world.inCave;
     this.world.setCaveMode(false);
-    const sp = this.state.spawnPoint ?? this.world.spawnPoint;
+    const dp = this.deathPos ?? this.player.position;
+    const sp = wasInCave ? this.state.spawnPoint ?? this.world.spawnPoint : this.navigation.respawnPoint(dp.x, dp.z);
+    this.effects = { poison: 0, burn: 0, chill: 0 };
+    this.cold = 0;
     const y = this.world.getGroundHeight(sp.x, sp.z, sp.y + 1);
     this.player.teleport(sp.x, y, sp.z);
     this.player.stats.revive();
@@ -508,6 +528,146 @@ export class Game {
     this.notify('👻 İzleyici modundasın: WASD ile uç, Boşluk yüksel, Shift hızlan. Diğerleri seni göremez.', 'info');
   }
 
+  // ── Hasar, etkiler ve zırh ──────────────────────────────
+  get armor() {
+    return ITEMS[this.state.upgrades.armor]?.armor ?? null;
+  }
+
+  /** Düşman/boss vuruşu. fx: { poison, burn, chill, fromX, fromZ } */
+  hurtPlayer(amount, source, fx = {}) {
+    const p = this.player;
+    if (p.ghost || p.stats.dead || this.state.mode === 'dead' || !(amount >= 0)) return;
+    const armor = this.armor;
+    let dmg = Math.min(200, amount);
+    if (fx.burn && armor?.heat) dmg *= 0.6;
+    if (fx.chill && armor?.cold) dmg *= 0.8;
+    p.stats.damage(dmg, source);
+    if (fx.poison) this.effects.poison = Math.max(this.effects.poison, 5);
+    if (fx.burn) this.effects.burn = Math.max(this.effects.burn, armor?.heat ? 1 : 3);
+    if (fx.chill && !armor?.cold) this.effects.chill = Math.max(this.effects.chill, 2.5);
+    // geri itilme
+    if (Number.isFinite(fx.fromX) && Number.isFinite(fx.fromZ) && !p.mounted) {
+      const dx = p.position.x - fx.fromX;
+      const dz = p.position.z - fx.fromZ;
+      const d = Math.hypot(dx, dz) || 1;
+      const k = Math.min(9, 3 + dmg * 0.12);
+      p.velocity.x += (dx / d) * k;
+      p.velocity.z += (dz / d) * k;
+    }
+    p.cancelAction();
+    this.cameraController.impact(Math.min(0.25, 0.06 + dmg * 0.004));
+    this.cameraController.shake(Math.min(0.3, dmg * 0.006));
+    this.ui.hud.hurtFlash();
+  }
+
+  /** Zırhı kuşan (envanterdeki eşya donanım yuvasına geçer, eskisi envantere döner). */
+  equipArmor(slotIndex) {
+    const inv = this.player.inventory;
+    const stack = inv.slots[slotIndex];
+    const def = stack && ITEMS[stack.id];
+    if (!def?.armor) return false;
+    const old = this.state.upgrades.armor;
+    inv.removeAt(slotIndex, 1);
+    this.state.upgrades.armor = stack.id;
+    if (old && ITEMS[old]) {
+      const left = inv.add(old, 1);
+      if (left > 0) this.world.drops.spawn(this.player.position.x, this.player.position.z, [{ id: old, count: 1 }]);
+    }
+    this.applyArmor();
+    this.audio.play('craft');
+    this.notify(`${def.icon} ${def.name} kuşanıldı (Savunma +${def.armor.defense}).`, 'success');
+    this.bus.emit('armor:equipped', { id: stack.id });
+    this.requestSave();
+    return true;
+  }
+
+  unequipArmor() {
+    const id = this.state.upgrades.armor;
+    if (!id) return false;
+    const left = this.player.inventory.add(id, 1);
+    if (left > 0) {
+      this.notify('Envanterin dolu — zırhı çıkaramazsın.', 'warn');
+      return false;
+    }
+    delete this.state.upgrades.armor;
+    this.applyArmor();
+    this.audio.play('click');
+    this.requestSave();
+    return true;
+  }
+
+  applyArmor() {
+    this.player.stats.defense = this.armor?.defense ?? 0;
+    this.player.model.setArmor?.(this.state.upgrades.armor ?? null);
+  }
+
+  /** Barınak/yatak: bulunduğun adanın doğma noktası. */
+  setSpawnPoint(sp) {
+    const isl = this.world.islandAt(sp.x, sp.z) ?? this.world.nearestIsland(sp.x, sp.z);
+    if (isl.id === 'novera') this.state.spawnPoint = sp;
+    else this.state.spawnPoints[isl.id] = sp;
+  }
+
+  /** Zehir/yanık/üşüme, lav ve ada iklimi (buz adasında soğuk, volkanda sıcak). */
+  updateEffects(dt) {
+    const p = this.player;
+    const s = p.stats;
+    const fx = this.effects;
+    const out = [];
+    if (p.ghost || s.dead) {
+      this.statusEffects = out;
+      s.chilled = false;
+      return;
+    }
+    const armor = this.armor ?? {};
+    const w = this.world;
+    const pos = p.position;
+    if (fx.poison > 0) {
+      fx.poison -= dt;
+      s.damage(1.6 * dt, 'poison', true);
+      out.push('Zehirlendin');
+    }
+    if (fx.burn > 0) {
+      fx.burn -= dt;
+      s.damage((armor.heat ? 1 : 2.5) * dt, 'burn', true);
+      if (Math.random() < dt * 6) w.particles.emit('fire', pos.x, pos.y + 1, pos.z, 0.25);
+      out.push('Yanıyorsun');
+    }
+    if (fx.chill > 0) fx.chill -= dt;
+    const isl = w.inCave ? null : w.islandAt(pos.x, pos.z);
+    this.envTimer -= dt;
+    // lav
+    if (isl && !p.mounted && w.isLava(pos.x, pos.z) && pos.y < w.terrain.getHeight(pos.x, pos.z) + 0.8) {
+      s.damage((armor.heat ? 8 : 24) * dt, 'lava', true);
+      fx.burn = Math.max(fx.burn, armor.heat ? 0.5 : 2);
+      if (this.envTimer <= 0) {
+        this.envTimer = 0.6;
+        this.audio.play('hurt');
+        this.ui.hud.hurtFlash();
+      }
+      out.push('LAV! Hemen çık!');
+    }
+    // buz adası: ısınmadan uzun süre kalınca donmaya başlarsın
+    if (isl?.biome === 'ice') {
+      const warm = armor.cold || this.building.nearestFire(pos) < 7 || !!this.building.restInfo(pos).shelter;
+      const night = w.dayNight.env.nightFactor;
+      const rate = warm ? -0.25 : (0.03 + night * 0.03) * (p.swimming ? 4 : 1);
+      this.cold = clamp(this.cold + rate * dt, 0, 1);
+    } else this.cold = Math.max(0, this.cold - dt * 0.2);
+    if (this.cold >= 1) {
+      s.damage(0.7 * dt, 'cold', true);
+      out.push('Donuyorsun! Ateş yak ya da Kürk Mont giy');
+    } else if (this.cold > 0.45) out.push('Üşüyorsun — ateşe yaklaş');
+    // volkan adası: sıcakta çabuk susarsın
+    if (isl?.biome === 'volcano' && !armor.heat) {
+      s.thirst = Math.max(0, s.thirst - 0.05 * dt);
+      out.push('Sıcak: daha çabuk susuyorsun');
+    }
+    s.chilled = fx.chill > 0 || this.cold >= 1;
+    if (fx.chill > 0) out.push('Dondun: yavaşladın');
+    this.statusEffects = out;
+  }
+
   // ── Kayıt ───────────────────────────────────────────────
   serialize() {
     return {
@@ -523,6 +683,9 @@ export class Game {
       quests: this.quests.serialize(),
       animals: this.animals.serialize(),
       vehicles: this.vehicles.serialize(),
+      navigation: this.navigation.serialize(),
+      enemies: this.enemies.serialize(),
+      bosses: this.bosses.serialize(),
       inCave: this.world.inCave,
     };
   }
@@ -539,6 +702,10 @@ export class Game {
     this.world.drops.deserialize(d.drops);
     if (!this.state.worldId) this.state.worldId = makeWorldId();
     this.exploration.deserialize(d.exploration);
+    this.navigation.deserialize(d.navigation);
+    this.enemies.deserialize(d.enemies);
+    this.bosses.deserialize(d.bosses);
+    this.applyArmor();
     this.quests.deserialize(d.quests);
     // yeni sürümde eklenen tarif/yapı kilitlerini (seviye ve tamamlanan görevlere göre) aç
     this.progression.syncUnlocks();
@@ -602,6 +769,8 @@ export class Game {
       buildings: this.building.serialize(),
       boats: this.vehicles.serialize().boats,
       animals: this.animals.snapshot(),
+      known: this.navigation.serialize(),
+      bosses: this.bosses.snapshot(),
       hostPos: this.world.inCave || this.player.ghost ? null : [r2(p.x), r2(p.y), r2(p.z)],
     };
   }
@@ -618,6 +787,10 @@ export class Game {
     this.vehicles.deserialize({ boats: snap.boats ?? [], mounted: -1 });
     this.animals.setRemote(true);
     this.animals.applySnapshot(snap.animals ?? []);
+    this.navigation.deserialize(snap.known);
+    this.enemies.setRemote(true);
+    this.bosses.setRemote(true);
+    this.bosses.applySnapshot(snap.bosses);
 
     // misafirin kendi karakteri (envanter, seviye, görevler) bu tarayıcıda saklanır
     const guest = SaveManager.loadGuest();
@@ -631,6 +804,7 @@ export class Game {
         this.exploration.deserialize(guest.exploration);
         this.quests.deserialize(guest.quests);
         this.progression.syncUnlocks();
+        this.applyArmor();
         this.cameraController.deserialize(guest.camera);
         this.world.drops.deserialize(guest.drops);
         fresh = false;
@@ -639,6 +813,7 @@ export class Game {
       }
     }
     this.state.spawnPoint = null;
+    this.state.spawnPoints = {};
     this.state.flags.hardcoreDead = false;
     this.state.worldId = snap.worldId ?? null;
     this.setDifficulty(snap.difficulty);
@@ -751,12 +926,16 @@ export class Game {
         if (playing) this.playerController.update(dt, inputEnabled);
         this.vehicles.update(dt, inputEnabled);
         this.animals.update(dt);
+        this.enemies.update(dt);
+        this.bosses.update(dt);
+        this.navigation.update(dt);
         if (playing) {
           this.interaction.update(dt, inputEnabled);
           this.building.update(dt, inputEnabled);
           if (!this.player.ghost) {
             this.player.stats.update(dt, { running: this.player.running, decayMult: 1 - this.progression.bonus('decay') });
           }
+          this.updateEffects(dt);
           this.exploration.update(dt);
           this.quests.update(dt);
         }
@@ -834,15 +1013,16 @@ export class Game {
 
   ambientContext() {
     const p = this.player.position;
-    const island = this.world.island;
     if (this.world.inCave) {
       return { coast: 0, forest: 0, altitude: 0, night: 0, nearFire: 0, cave: 1, active: this.state.mode === 'playing' };
     }
-    const inland = island.inland(p.x, p.z);
+    const island = this.world.islandAt(p.x, p.z);
+    const inland = island ? island.inland(p.x, p.z) : 0;
     const fire = this.building.nearestFire(p);
+    const forest = island && island.biome !== 'desert' && island.biome !== 'volcano' ? island.forestMask(p.x, p.z) : 0;
     return {
       coast: 1 - smoothstep(4, 70, inland),
-      forest: island.forestMask(p.x, p.z) * smoothstep(10, 40, inland),
+      forest: forest * smoothstep(10, 40, inland),
       altitude: smoothstep(10, 42, p.y),
       night: this.world.dayNight.env.nightFactor,
       nearFire: 1 - smoothstep(2, 10, fire),

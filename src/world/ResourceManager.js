@@ -13,6 +13,52 @@ const SPACING = {
   palm_tree: 4.6, oak_tree: 5.6, pine_tree: 5.0, rock: 4.6, pebble: 2.2, stick: 2.2,
   fiber_bush: 2.4, berry_bush: 3.0, coconut: 1.0, fish_spot: 22, vine_tangle: 3.2,
   coal_ore: 3.5, iron_ore: 3.5, crystal_node: 3.0, cave_mushroom: 2.0,
+  cactus: 4.2, desert_shrub: 2.6, sandstone_rock: 4.6, copper_rock: 4.2, bone_pile: 3.0,
+  snow_pine: 5.0, ice_rock: 4.4, iron_vein: 4.2, frost_bush: 3.0,
+  charred_tree: 4.6, obsidian_rock: 4.0, sulfur_vent: 4.0, basalt_rock: 4.8,
+};
+
+// Yeni adaların kaynak dağılımı (biyoma göre). i: { x, z, h, region, inland, slope, forest, island }
+const BIOME_RULES = {
+  desert: [
+    { type: 'palm_tree', count: 22, test: (i) => i.forest > 0.35 && i.h > 0.8 && i.slope < 0.7 },
+    { type: 'cactus', count: 75, test: (i) => (i.region === 'd_dunes' || (i.region === 'd_beach' && i.inland > 10)) && i.slope < 0.7 },
+    { type: 'desert_shrub', count: 60, test: (i) => i.region === 'd_dunes' || i.region === 'd_beach' },
+    { type: 'sandstone_rock', count: 32, test: (i) => i.region === 'd_dunes' && i.slope < 0.8 },
+    { type: 'copper_rock', count: 14, test: (i) => i.region === 'd_dunes' && i.mesa > 0.02 && i.slope < 0.9 },
+    { type: 'copper_rock', count: 8, test: (i) => i.region === 'd_dunes' && i.slope < 0.6 },
+    { type: 'bone_pile', count: 14, test: (i) => i.region === 'd_dunes' },
+    { type: 'stick', count: 30, test: (i) => i.region === 'd_dunes' || i.region === 'd_oasis' },
+    { type: 'pebble', count: 40, test: (i) => i.region === 'd_beach' || i.region === 'd_dunes' },
+    { type: 'fiber_bush', count: 10, test: (i) => i.region === 'd_oasis' && i.h > 0.8 },
+    { type: 'berry_bush', count: 6, test: (i) => i.region === 'd_oasis' },
+    { type: 'fish_spot', count: 8, test: (i) => i.h > -1.9 && i.h < -0.6 && i.inland < -2 },
+  ],
+  ice: [
+    { type: 'snow_pine', count: 160, test: (i) => i.region === 'i_forest' && i.slope < 0.9 },
+    { type: 'snow_pine', count: 30, test: (i) => i.region === 'i_tundra' && i.slope < 0.7 },
+    { type: 'snow_pine', count: 30, test: (i) => i.region === 'i_peak' && i.h < 45 && i.slope < 1.1 },
+    { type: 'ice_rock', count: 30, test: (i) => (i.region === 'i_tundra' || i.region === 'i_peak') && i.slope < 1.1 },
+    { type: 'iron_vein', count: 16, test: (i) => (i.region === 'i_peak' || i.region === 'i_tundra') && i.h > 6 && i.slope < 1.2 },
+    { type: 'rock', count: 28, test: (i) => i.region === 'i_tundra' || i.region === 'i_peak' },
+    { type: 'frost_bush', count: 40, test: (i) => i.region === 'i_tundra' || i.region === 'i_forest' },
+    { type: 'stick', count: 55, test: (i) => i.region === 'i_forest' || i.region === 'i_tundra' },
+    { type: 'pebble', count: 40, test: (i) => i.region === 'i_shore' || i.region === 'i_tundra' },
+    { type: 'fiber_bush', count: 14, test: (i) => i.region === 'i_tundra' },
+    { type: 'fish_spot', count: 8, test: (i) => i.h > -1.9 && i.h < -0.6 && i.inland < -2 },
+  ],
+  volcano: [
+    { type: 'charred_tree', count: 90, test: (i) => i.region === 'v_ash' && i.forest > 0.2 && i.slope < 0.8 },
+    { type: 'charred_tree', count: 25, test: (i) => i.region === 'v_slope' && i.h < 30 && i.slope < 0.9 },
+    { type: 'basalt_rock', count: 45, test: (i) => (i.region === 'v_ash' || i.region === 'v_slope') && i.slope < 1.0 },
+    { type: 'obsidian_rock', count: 26, test: (i) => i.nearLava && i.slope < 1.0 },
+    { type: 'obsidian_rock', count: 8, test: (i) => i.region === 'v_slope' && i.slope < 1.0 },
+    { type: 'sulfur_vent', count: 22, test: (i) => (i.region === 'v_slope' || i.region === 'v_crater') && i.slope < 1.1 },
+    { type: 'sulfur_vent', count: 6, test: (i) => i.region === 'v_ash' },
+    { type: 'pebble', count: 40, test: (i) => i.region === 'v_beach' || i.region === 'v_ash' },
+    { type: 'stick', count: 35, test: (i) => i.region === 'v_ash' },
+    { type: 'fish_spot', count: 6, test: (i) => i.h > -1.9 && i.h < -0.6 && i.inland < -2 },
+  ],
 };
 
 // Ağaç türüne göre rüzgâr salınımı (tepe yüksekliği ve genliği)
@@ -20,6 +66,9 @@ const TREE_WIND = {
   palm_tree: { height: 10, amp: 0.42, flutter: 0.05 },
   oak_tree: { height: 9, amp: 0.26, flutter: 0.045 },
   pine_tree: { height: 12, amp: 0.3, flutter: 0.025 },
+  snow_pine: { height: 11, amp: 0.26, flutter: 0.02 },
+  charred_tree: { height: 6, amp: 0.05, flutter: 0.0 },
+  cactus: { height: 4, amp: 0.02, flutter: 0.0 },
 };
 const PLANT_WIND = { height: 1.6, amp: 0.09, flutter: 0.03 };
 const STUMP_CAPACITY = 400;
@@ -28,7 +77,10 @@ const STUMP_CAPACITY = 400;
 // Büyük nesneler dünya parçalarına bölünerek çizilir (görünmeyen parçalar atlanır)
 const CHUNKED_GROUPS = new Set(['tree', 'rock']);
 
-const SHADOW_TYPES = new Set(['palm_tree', 'oak_tree', 'pine_tree', 'rock', 'berry_bush', 'vine_tangle']);
+const SHADOW_TYPES = new Set([
+  'palm_tree', 'oak_tree', 'pine_tree', 'rock', 'berry_bush', 'vine_tangle',
+  'cactus', 'sandstone_rock', 'copper_rock', 'snow_pine', 'ice_rock', 'iron_vein', 'charred_tree', 'obsidian_rock', 'basalt_rock', 'sulfur_vent',
+]);
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -117,6 +169,19 @@ export class ResourceManager {
     this.stumps = new StumpPool(this.group);
     this.lodPairs = [];
     this.lodDistance = 70; // parça kenarına bu mesafeden uzak ağaçlar düşük poligonlu çizilir (kaliteyle değişir)
+    // her adanın kaynakları kendi grubunda (uzaktaki adalar tamamen gizlenir)
+    this.islandGroups = {};
+    for (const isl of world.islands) {
+      const g = new THREE.Group();
+      g.name = `resources:${isl.id}`;
+      this.group.add(g);
+      this.islandGroups[isl.id] = g;
+    }
+  }
+
+  setIslandVisible(id, vis) {
+    const g = this.islandGroups[id];
+    if (g) g.visible = vis;
   }
 
   // ── Uzamsal ızgara ──────────────────────────────────────
@@ -269,8 +334,91 @@ export class ResourceManager {
 
     // 4) Mağara (dağın altındaki kapalı alan) kendi kaynaklarını yerleştirir
     this.world.cave?.placeResources(this, rng);
+    for (const n of this.nodes) n.island = isl.id;
+
+    // 5) Diğer adalar (her biri kendi tohumuyla; ana adanın sırası değişmesin diye sonra)
+    for (const other of this.world.islands) {
+      if (other === isl) continue;
+      const first = this.nodes.length;
+      this.generateIsland(other, exclusions);
+      for (let k = first; k < this.nodes.length; k++) this.nodes[k].island = other.id;
+    }
 
     this.buildMeshes();
+    // boss arenaları (ana adada kayıt uyumu için sonradan temizlenir)
+    for (const z of this.world.landmarks.arenaZones()) this.clearArea(z.x, z.z, z.r);
+  }
+
+  /** Bir alandaki kaynakları kalıcı olarak kaldırır (arena, yapı alanı). */
+  clearArea(x, z, r) {
+    this.forEachNear(x, z, r, (n) => {
+      if (!n.removed && !n.def.cave) this.removeNode(n);
+    });
+  }
+
+  /** Çöl/buz/volkan adasının kaynakları. */
+  generateIsland(island, exclusions) {
+    const rng = mulberry32(island.def.seed * 31 + 7);
+    const ter = this.terrain;
+    const R = island.radius + 30;
+    const blocked = (x, z) => {
+      for (const e of exclusions) if (Math.hypot(x - e.x, z - e.z) < e.r) return true;
+      if (island.isInLake(x, z, 1.5) || island.isOnIce(x, z)) return true;
+      return island.isLava(x, z, 2.5);
+    };
+    const tryPlace = (type, x, z) => {
+      if (blocked(x, z)) return null;
+      const sp = SPACING[type];
+      let ok = true;
+      this.forEachNear(x, z, sp + 4, (n, d) => {
+        if (d < (sp + n.spacing) / 2) ok = false;
+      });
+      if (!ok) return null;
+      return this.createNode(type, x, z, rng);
+    };
+    const info = (x, z) => {
+      const h = ter.getHeight(x, z);
+      return {
+        x, z, h, region: island.region(x, z, h), inland: island.inland(x, z), slope: ter.getSlope(x, z),
+        forest: island.forestMask(x, z), mesa: island.mesaFactor(x, z),
+        nearLava: island.biome === 'volcano' && island.isLava(x, z, 12) && !island.isLava(x, z, 3.5),
+      };
+    };
+    // varış sahiline yakın birkaç başlangıç kaynağı (dal, çakıl)
+    const sp = island.spawn;
+    const inward = Math.atan2(island.cz - sp.z, island.cx - sp.x);
+    for (const [type, count] of [['stick', 5], ['pebble', 5]]) {
+      let placed = 0;
+      for (let t = 0; t < 200 && placed < count; t++) {
+        const a = inward + randRange(rng, -1.4, 1.4);
+        const r = randRange(rng, 5, 18);
+        const x = sp.x + Math.cos(a) * r;
+        const z = sp.z + Math.sin(a) * r;
+        if (ter.getHeight(x, z) < 0.5) continue;
+        if (tryPlace(type, x, z)) placed++;
+      }
+    }
+    for (const rule of BIOME_RULES[island.biome] ?? []) {
+      let placed = 0;
+      for (let tries = 0; tries < rule.count * 60 && placed < rule.count; tries++) {
+        const x = island.cx + randRange(rng, -R, R);
+        const z = island.cz + randRange(rng, -R, R);
+        const i = info(x, z);
+        if (i.h < (rule.type === 'fish_spot' ? -3 : 0.3)) continue;
+        if (!rule.test(i)) continue;
+        if (tryPlace(rule.type, x, z)) placed++;
+      }
+    }
+    // vahadaki palmiyelerin dibine hindistan cevizi
+    if (island.biome === 'desert') {
+      for (const palm of (this.byType.palm_tree ?? []).filter((n) => island.contains(n.x, n.z))) {
+        if (rng() > 0.6) continue;
+        const a = rng() * Math.PI * 2;
+        const x = palm.x + Math.cos(a) * 3;
+        const z = palm.z + Math.sin(a) * 3;
+        if (ter.getHeight(x, z) > 0.4) tryPlace('coconut', x, z);
+      }
+    }
   }
 
   /** y verilirse arazi yerine o yükseklik kullanılır (mağara tabanı). */
@@ -312,12 +460,27 @@ export class ResourceManager {
   }
 
   buildMeshes() {
-    for (const [type, nodes] of Object.entries(this.byType)) {
+    const geoCache = {};
+    const lodCache = {};
+    for (const [type, all] of Object.entries(this.byType)) {
+      const byIsland = new Map();
+      for (const n of all) {
+        const key = n.island ?? 'novera';
+        if (!byIsland.has(key)) byIsland.set(key, []);
+        byIsland.get(key).push(n);
+      }
+      for (const [islandId, nodes] of byIsland) this.buildTypeMeshes(type, nodes, islandId, geoCache, lodCache);
+      if (RESOURCES[type].animated) this.animatedTypes.push(type);
+    }
+  }
+
+  buildTypeMeshes(type, nodes, islandId, geoCache, lodCache) {
+    {
       const def = RESOURCES[type];
-      const geos = buildResourceGeometries(def.model, def.variants ?? 1);
+      const geos = (geoCache[type] ??= buildResourceGeometries(def.model, def.variants ?? 1));
       const isTree = def.group === 'tree';
       const big = CHUNKED_GROUPS.has(def.group);
-      const parent = def.cave ? this.caveGroup : this.group;
+      const parent = def.cave ? this.caveGroup : this.islandGroups[islandId] ?? this.group;
       const material = this.materialFor(type);
       const meshes = buildChunkedInstances(parent, geos, nodes, material, {
         name: type,
@@ -332,13 +495,12 @@ export class ResourceManager {
         const depth = createWindDepthMaterial(TREE_WIND[type] ?? TREE_WIND.oak_tree);
         for (const m of meshes) m.customDepthMaterial = depth;
         // uzak parçalar için düşük poligonlu ikiz (gölge düşürmez); LOD seçimi update() içinde
-        const lodGeos = buildResourceGeometries(def.model, def.variants ?? 1, true);
-        const lodMeshes = buildChunkedInstances(this.group, lodGeos, nodes, material, {
+        const lodGeos = (lodCache[type] ??= buildResourceGeometries(def.model, def.variants ?? 1, true));
+        const lodMeshes = buildChunkedInstances(parent, lodGeos, nodes, material, {
           name: type + '_lod', chunkSize: 120, padding: 14, assign: 'lod',
         });
         meshes.forEach((m, i) => this.lodPairs.push({ high: m, low: lodMeshes[i] }));
       }
-      if (def.animated) this.animatedTypes.push(type);
     }
   }
 

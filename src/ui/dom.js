@@ -1,5 +1,7 @@
 import { ITEMS } from '../data/items.js';
 import { keyLabel } from '../data/controls.js';
+import { richNodes } from './rich.js';
+import { iconImg } from './ItemIcons.js';
 
 /** Küçük DOM yardımcısı: h('div', { class: 'x', onclick }, ...çocuklar) */
 export function h(tag, props = {}, ...children) {
@@ -19,9 +21,21 @@ export function h(tag, props = {}, ...children) {
   }
   for (const c of children.flat(Infinity)) {
     if (c === null || c === undefined || c === false) continue;
-    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    if (c instanceof Node) el.append(c);
+    else if (typeof c === 'string') el.append(...richNodes(c));
+    else el.append(document.createTextNode(String(c)));
   }
   return el;
+}
+
+/** Eşyanın 3B ikonu (<img>); çizilemezse adı. */
+export function itemIcon(id, cls = '') {
+  return iconImg('item', id, cls) ?? document.createTextNode(ITEMS[id]?.name?.[0] ?? '?');
+}
+
+/** Yapının 3B ikonu. */
+export function buildingIcon(type, cls = '') {
+  return iconImg('building', type, cls) ?? document.createTextNode('?');
 }
 
 export function kbd(code) {
@@ -38,7 +52,7 @@ export function renderSlot(el, stack, { key = null, selected = false, extraClass
     const def = ITEMS[stack.id];
     if (def) {
       el.classList.add(`rarity-${def.rarity ?? 'common'}`);
-      el.append(h('span', { class: 'icon' }, def.icon));
+      el.append(h('span', { class: 'icon' }, itemIcon(stack.id)));
       if (stack.count > 1) el.append(h('span', { class: 'count' }, stack.count));
       if (stack.dur !== undefined && def.durability) {
         const pct = Math.max(0, Math.min(1, stack.dur / def.durability));
@@ -55,6 +69,6 @@ export function renderSlot(el, stack, { key = null, selected = false, extraClass
 export function itemChip(id, n, have = null) {
   const def = ITEMS[id];
   const cls = have === null ? 'chip' : `chip ${have >= n ? 'have' : 'miss'}`;
-  const label = have === null ? `${def?.icon ?? ''} ${n} ${def?.name ?? id}` : `${def?.icon ?? ''} ${have}/${n} ${def?.name ?? id}`;
-  return h('span', { class: cls }, label);
+  const label = have === null ? ` ${n} ${def?.name ?? id}` : ` ${have}/${n} ${def?.name ?? id}`;
+  return h('span', { class: cls }, itemIcon(id), label);
 }

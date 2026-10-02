@@ -27,6 +27,7 @@ export class PlayerStats {
     this.staminaDelay = 0;
     this.exhausted = false;
     this.dead = false;
+    this.chilled = false; // donma: yavaşlatır
     this.warned = { hunger: false, thirst: false };
     this.diff = { decay: 1, damage: 1, regen: 1 };
   }
@@ -48,6 +49,7 @@ export class PlayerStats {
     let m = 1;
     if (this.starving) m *= 0.8;
     if (this.dehydrated) m *= 0.85;
+    if (this.chilled) m *= 0.7;
     return m;
   }
 

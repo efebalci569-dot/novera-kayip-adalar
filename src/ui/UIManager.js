@@ -10,6 +10,9 @@ import { TechTreeUI } from './TechTreeUI.js';
 import { ContainerUI } from './ContainerUI.js';
 import { NoteUI } from './NoteUI.js';
 import { MenuUI } from './MenuUI.js';
+import { registerIconKind } from './ItemIcons.js';
+import { buildAnimalModel } from '../world/AnimalModels.js';
+import { buildCreatureModel } from '../world/CreatureModels.js';
 
 // Klavye kısayolu → panel eşlemesi ve gereken özellik kilidi
 const PANEL_KEYS = [
@@ -26,6 +29,9 @@ const PANEL_KEYS = [
 export class UIManager {
   constructor(game) {
     this.game = game;
+    registerIconKind('animal', (type) => ({ object: buildAnimalModel(type).root, rotation: [0.25, -0.9, 0] }));
+    registerIconKind('enemy', (type) => ({ object: buildCreatureModel(type).root, rotation: [0.3, -0.8, 0] }));
+    registerIconKind('boss', (type) => ({ object: buildCreatureModel(type).root, rotation: [0.15, -0.6, 0] }));
     this.root = document.getElementById('ui-root');
     this.hud = new HUD(game, this.root);
     this.panelLayer = h('div', { class: 'panel-layer' });

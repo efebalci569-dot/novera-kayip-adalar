@@ -28,6 +28,7 @@ export class CameraController {
     this.tmp = new THREE.Vector3();
     this.orbitAngle = 0;
     this.landDip = 0;
+    this.shakeAmt = 0;
     this.eyeY = null;
   }
 
@@ -62,6 +63,11 @@ export class CameraController {
     this.landDip = Math.max(this.landDip, Math.min(0.4, strength));
   }
 
+  /** Yer sarsıntısı (boss vuruşları, uyanışlar). */
+  shake(strength) {
+    if (strength > 0) this.shakeAmt = Math.max(this.shakeAmt ?? 0, Math.min(0.6, strength));
+  }
+
   update(dt, player, inputEnabled) {
     const { input, settings } = this.game;
     const sens = 0.0022 * settings.sensitivity;
@@ -74,6 +80,13 @@ export class CameraController {
     this.landDip = damp(this.landDip, 0, 6, dt);
     if (this.firstPerson) this.updateFirstPerson(dt, player);
     else this.updateThirdPerson(dt, player, inputEnabled);
+    if (this.shakeAmt > 0.002) {
+      const s = this.shakeAmt * 0.35;
+      this.camera.position.x += (Math.random() - 0.5) * s;
+      this.camera.position.y += (Math.random() - 0.5) * s;
+      this.camera.position.z += (Math.random() - 0.5) * s;
+      this.shakeAmt = damp(this.shakeAmt, 0, 5, dt);
+    }
   }
 
   updateFirstPerson(dt, player) {

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { h, kbd, renderSlot, itemChip } from './dom.js';
+import { setRich, plainText } from './rich.js';
 import { ITEMS } from '../data/items.js';
 import { QUESTS, QUEST_TYPES } from '../data/quests.js';
 import { RECIPE_MAP } from '../data/recipes.js';
@@ -63,9 +64,11 @@ export class HUD {
     this.buildHelp = h('div', { class: 'build-help hidden' });
     this.clickHint = h('div', { class: 'click-hint hidden' }, 'Fareyle bakmak için ekrana tıkla (ya da basılı tutup sürükle)');
     this.vignette = h('div', { class: 'vignette' });
+    this.hurtEl = h('div', { class: 'hurt-flash' });
+    this.frostEl = h('div', { class: 'frost-overlay' });
     this.saveIndicator = h('div', { class: 'save-indicator' }, '💾 Kaydedildi');
     this.fps = h('div', { class: 'fps hidden' });
-    this.el.append(this.vignette, this.markerLayer, this.keyHints, this.toasts, this.floatLayer, this.buildHelp, this.clickHint, this.saveIndicator, this.fps);
+    this.el.append(this.vignette, this.hurtEl, this.frostEl, this.markerLayer, this.keyHints, this.toasts, this.floatLayer, this.buildHelp, this.clickHint, this.saveIndicator, this.fps);
 
     this.fadeEl = h('div', { class: 'fade' }, h('div', { class: 'fade-text' }), h('div', { class: 'fade-sub' }));
     root.append(this.fadeEl);
@@ -194,8 +197,8 @@ export class HUD {
     const d = g.difficulty;
     this.diffShown = g.state.difficulty;
     this.diffBadge.style.setProperty('--c', d.color);
-    this.diffBadge.textContent = `${d.icon} ${d.name}`;
-    this.diffBadge.title = d.desc;
+    setRich(this.diffBadge, `${d.icon} ${d.name}`);
+    this.diffBadge.title = plainText(d.desc);
   }
 
   buildCompass() {
@@ -312,6 +315,11 @@ export class HUD {
         this.game.audio.play('discover', { volume: 0.7 });
       }
     });
+    bus.on('island:entered', ({ id, island, first }) => {
+      if (!first || id === 'novera') return;
+      this.banner('Yeni Ada', island.name, island.def.subtitle ?? '', 5);
+      this.game.audio.play('discover');
+    });
     bus.on('landmark:discovered', ({ def }) => {
       this.banner('Keşfedildi', `${def.icon} ${def.name}`, '');
       this.game.audio.play('discover');
@@ -350,7 +358,7 @@ export class HUD {
   }
 
   showHotbarLabel(text) {
-    this.hotbarLabel.textContent = text;
+    setRich(this.hotbarLabel, text);
     this.hotbarLabel.classList.add('show');
     clearTimeout(this.hotbarLabelTimer);
     this.hotbarLabelTimer = setTimeout(() => this.hotbarLabel.classList.remove('show'), 1400);
@@ -453,9 +461,44 @@ export class HUD {
   }
 
   fade(on, text = '', sub = '') {
-    this.fadeEl.children[0].textContent = text;
-    this.fadeEl.children[1].textContent = sub;
+    setRich(this.fadeEl.children[0], text);
+    setRich(this.fadeEl.children[1], sub);
     this.fadeEl.classList.toggle('on', on);
+  }
+
+  /** Hasar alınca kısa kırmızı parlama. */
+  hurtFlash() {
+    const el = this.hurtEl;
+    el.classList.remove('on');
+    void el.offsetWidth;
+    el.classList.add('on');
+  }
+
+  /** Uyanık boss'un can çubuğu (info null ise gizlenir). */
+  setBossBar(info) {
+    if (!this.bossBar) {
+      this.bossName = h('div', { class: 'boss-name' });
+      this.bossTitle = h('div', { class: 'boss-title' });
+      this.bossFill = h('div', { class: 'fill' });
+      this.bossHpText = h('div', { class: 'boss-hp-text' });
+      this.bossBar = h('div', { class: 'boss-bar hidden' }, this.bossName, this.bossTitle, h('div', { class: 'boss-track' }, this.bossFill, this.bossHpText));
+      this.el.append(this.bossBar);
+    }
+    if (!info) {
+      this.bossBar.classList.add('hidden');
+      this.bossBarId = null;
+      return;
+    }
+    if (this.bossBarId !== info.id) {
+      this.bossBarId = info.id;
+      setRich(this.bossName, `{x:${info.id}} ${info.name}`);
+      this.bossTitle.textContent = info.title;
+      this.bossFill.style.background = `linear-gradient(90deg, ${info.color}, #ff4d4d)`;
+    }
+    this.bossBar.classList.remove('hidden');
+    this.bossBar.classList.toggle('enraged', !!info.enraged && !info.dead);
+    this.bossFill.style.transform = `scaleX(${Math.max(0, info.hp / info.maxHp)})`;
+    this.bossHpText.textContent = info.dead ? 'YENİLDİ' : `${Math.ceil(info.hp)} / ${info.maxHp}${info.enraged ? ' · ÖFKELİ' : ''}`;
   }
 
   // ── Kare güncellemesi ───────────────────────────────────
@@ -503,10 +546,13 @@ export class HUD {
     if (s.starving) fx.push('Açlık: yavaşladın, can kaybediyorsun');
     if (s.dehydrated) fx.push('Susuzluk: can kaybediyorsun');
     if (s.exhausted) fx.push('Yorgun: koşamazsın');
+    fx.push(...this.game.statusEffects);
     const txt = fx.join(' · ');
     if (this.effects.textContent !== txt) this.effects.textContent = txt;
     const hpLow = s.health / s.maxHealth;
     this.vignette.style.opacity = hpLow < 0.35 ? String((0.35 - hpLow) / 0.35) : '0';
+    const cold = this.game.cold;
+    this.frostEl.style.opacity = cold > 0.3 ? String(Math.min(1, (cold - 0.3) / 0.7)) : '0';
   }
 
   updateRight() {
@@ -521,7 +567,10 @@ export class HUD {
     if (p.perkPoints > 0) {
       const code = keyLabel(g.settings.bindings.skills?.[0]);
       const txt = `✨ ${p.perkPoints} yetenek puanı [${code}]`;
-      if (this.perkBadge.textContent !== txt) this.perkBadge.textContent = txt;
+      if (this.perkBadgeText !== txt) {
+        this.perkBadgeText = txt;
+        setRich(this.perkBadge, txt);
+      }
       this.perkBadge.classList.remove('hidden');
     } else this.perkBadge.classList.add('hidden');
   }
@@ -571,7 +620,7 @@ export class HUD {
       this.promptSig = sig;
       this.promptMain.replaceChildren(kbd(g.settings.bindings.interact?.[0]), ` ${pr.action}`, h('span', { style: { color: '#a9b4b8', fontWeight: 500 } }, ` — ${pr.name}${pr.uses ? ` (${pr.uses})` : ''}`));
       this.promptMain.classList.toggle('disabled', !!pr.disabled);
-      this.promptNote.textContent = pr.note ?? '';
+      setRich(this.promptNote, pr.note ?? '');
       this.promptNote.classList.toggle('hidden', !pr.note);
     }
     const hasHp = pr.hp !== undefined && pr.hp < 1;

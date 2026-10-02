@@ -1,4 +1,5 @@
 import { h } from './dom.js';
+import { setRich } from './rich.js';
 import { SaveManager } from '../core/SaveManager.js';
 import { QUALITY_PRESETS } from '../core/Settings.js';
 import { ACTIONS, keyLabel } from '../data/controls.js';
@@ -105,7 +106,7 @@ export class MenuUI {
     const select = (id) => {
       choice = id;
       for (const c of cards) c.classList.toggle('active', c.dataset.id === id);
-      startBtn.textContent = `${DIFFICULTIES[id].icon}  ${DIFFICULTIES[id].name} ile başla`;
+      setRich(startBtn, `${DIFFICULTIES[id].icon}  ${DIFFICULTIES[id].name} ile başla`);
     };
     startBtn.addEventListener('click', () => {
       const go = () => {
@@ -243,7 +244,7 @@ export class MenuUI {
     let busy = false;
     const setStatus = (text, err = false, isBusy = false) => {
       busy = isBusy;
-      statusEl.textContent = text;
+      setRich(statusEl, text);
       statusEl.classList.toggle('err', err);
       joinBtn.textContent = busy ? 'Bağlanıyor…' : '➜  Katıl';
       for (const el of lockables) el.disabled = busy;

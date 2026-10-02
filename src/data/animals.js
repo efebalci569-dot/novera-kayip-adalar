@@ -29,3 +29,8 @@ export const ANIMALS = {
     xp: 8, respawn: 300, sound: 'cluck', butcherAction: 'Tüyünü Yolup Parçala',
   },
 };
+
+for (const [id, def] of Object.entries(ANIMALS)) {
+  def.emoji = def.icon;
+  def.icon = `{a:${id}}`;
+}

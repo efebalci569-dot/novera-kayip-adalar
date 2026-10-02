@@ -21,8 +21,11 @@ export class GameState {
       animalsHunted: 0,
       distanceSailed: 0,
       deaths: 0,
+      enemiesKilled: 0,
+      bossesDefeated: 0,
     };
     this.spawnPoint = null;
+    this.spawnPoints = {}; // diğer adalardaki doğma noktaları (ada kimliği → konum)
     this.difficulty = 'normal';
     this.worldId = null; // dünyanın kimliği (hardcore çok oyunculuda kimin nerede öldüğünü bilmek için)
   }
@@ -74,6 +77,7 @@ export class GameState {
       upgrades: this.upgrades,
       stats: this.stats,
       spawnPoint: this.spawnPoint,
+      spawnPoints: this.spawnPoints,
       difficulty: this.difficulty,
       worldId: this.worldId,
     };
@@ -89,6 +93,7 @@ export class GameState {
     this.upgrades = d.upgrades ?? {};
     this.stats = { ...this.stats, ...(d.stats ?? {}) };
     this.spawnPoint = d.spawnPoint ?? null;
+    this.spawnPoints = d.spawnPoints ?? {};
     this.difficulty = d.difficulty ?? 'normal';
     this.worldId = d.worldId ?? null;
   }

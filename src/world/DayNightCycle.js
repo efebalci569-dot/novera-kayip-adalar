@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import { clamp, lerp, smoothstep, mulberry32 } from '../utils/math.js';
 
+// Biyom atmosferleri (ufuk/gök rengine karışım ve sis mesafesi çarpanı)
+const BIOME_TINTS = {
+  desert: { horizon: new THREE.Color('#f0d7a8'), top: new THREE.Color('#8fb4d6'), amount: 0.45, fog: 0.9 },
+  ice: { horizon: new THREE.Color('#dbe9f4'), top: new THREE.Color('#9fc0dc'), amount: 0.5, fog: 0.75 },
+  volcano: { horizon: new THREE.Color('#8a6a60'), top: new THREE.Color('#5d5560'), amount: 0.6, fog: 0.68 },
+};
+
 const SHADOW_EXTENT = 58; // oyuncu çevresinde gölge düşen alanın yarı genişliği (m)
 
 // Gün içindeki anahtar kareler (saat → renk/ışık). Aradaki değerler doğrusal karıştırılır.
@@ -158,6 +165,15 @@ export class DayNightCycle {
     this.cave = on;
   }
 
+  /**
+   * Biyoma göre atmosfer: çölde sıcak, tozlu ufuk; buz adasında soğuk mavi pus;
+   * volkanda kül rengi, kızıl pus ve daha yakın sis. k: adanın ne kadar içinde (0..1).
+   */
+  setBiome({ biome, k }) {
+    const t = BIOME_TINTS[biome];
+    this.biomeTint = t ? { ...t, k: this.biomeTint?.biome === biome ? lerp(this.biomeTint.k, k, 0.05) : k * 0.05, biome } : null;
+  }
+
   setFogScale(scale) {
     this.fogBase.far = 420 * scale;
     this.fogBase.near = 70 * scale;
@@ -176,6 +192,11 @@ export class DayNightCycle {
 
     env.top.copy(a.top).lerp(b.top, t);
     env.horizon.copy(a.hor).lerp(b.hor, t);
+    const bt = this.biomeTint;
+    if (bt && bt.k > 0.001) {
+      env.horizon.lerp(bt.horizon, bt.k * bt.amount);
+      env.top.lerp(bt.top, bt.k * bt.amount * 0.6);
+    }
     env.sunColor.copy(a.light).lerp(b.light, t);
     const lightIntensity = lerp(a.li, b.li, t);
     env.lightLevel = lerp(a.lv, b.lv, t);
@@ -243,7 +264,8 @@ export class DayNightCycle {
     }
     fog.color.copy(env.horizon);
     const nightFog = lerp(1, 0.6, env.nightFactor);
-    fog.near = this.fogBase.near * nightFog;
-    fog.far = this.fogBase.far * nightFog;
+    const biomeFog = bt ? lerp(1, bt.fog, bt.k) : 1;
+    fog.near = this.fogBase.near * nightFog * biomeFog;
+    fog.far = this.fogBase.far * nightFog * biomeFog;
   }
 }

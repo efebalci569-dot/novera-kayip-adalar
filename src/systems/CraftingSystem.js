@@ -32,8 +32,9 @@ export class CraftingSystem {
     return recipe.name ?? ITEMS[recipe.result]?.name ?? recipe.id;
   }
 
+  /** Arayüz metni için 3B ikon belirteci (sırt çantası gibi geliştirmelerin de modeli var). */
   resultIcon(recipe) {
-    return recipe.icon ?? ITEMS[recipe.result]?.icon ?? '❔';
+    return `{i:${recipe.result ?? recipe.id}}`;
   }
 
   /** { ok, reason } — UI tarifleri renklendirmek için kullanır. */
