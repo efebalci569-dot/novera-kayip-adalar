@@ -33,7 +33,8 @@ export class LightPool {
     const sorted = [];
     for (const s of this.sources) {
       if (s.enabled === false) continue;
-      const d = Math.hypot(s.x - focus.x, s.z - focus.z) - (s.priority ?? 0);
+      // 3B uzaklık: mağaradaki ışıklar yüzeyde (ve tersi) yuva işgal etmesin
+      const d = Math.hypot(s.x - focus.x, (s.y - focus.y) * 1.5, s.z - focus.z) - (s.priority ?? 0);
       if (d < 70) sorted.push({ s, d });
     }
     sorted.sort((a, b) => a.d - b.d);

@@ -2,9 +2,12 @@ import * as THREE from 'three';
 import { ITEMS } from '../data/items.js';
 import { rollDrops } from './LootSystem.js';
 
-const TOOL_NAMES = { axe: 'Balta', pickaxe: 'Kazma', spear: 'Mızrak' };
+const TOOL_NAMES = { axe: 'Balta', pickaxe: 'Kazma', spear: 'Mızrak', knife: 'Bıçak' };
 const SWING_TIME = 0.55;
 const SWING_IMPACT = 0.33;
+const FIST_DAMAGE = 3;
+const ATTACK_REACH = 2.6;
+const MAX_DY = 5; // hedefle oyuncu arasındaki en büyük yükseklik farkı (mağara/yüzey ayrımı)
 
 /**
  * Oyuncunun önündeki etkileşim hedefini bulur ([E] Odun Topla gibi) ve
@@ -23,6 +26,20 @@ export class InteractionSystem {
     const input = game.input;
     const player = game.player;
     this.errorCooldown -= dt;
+
+    // teknedeyken tek etkileşim: inmek
+    if (player.mounted) {
+      const b = player.mounted;
+      this.target = game.state.mode === 'playing'
+        ? { kind: 'dismount', x: b.x, y: b.y, z: b.z, prompt: { action: 'İn', name: b.def.name, note: 'Kıyıya yakınsan karaya çıkarsın' } }
+        : null;
+      if (!inputEnabled) return;
+      for (let i = 1; i <= 5; i++) if (input.wasPressed(`hotbar${i}`)) player.selectSlot(i - 1);
+      if (input.wasPressed('interact')) game.vehicles.dismount();
+      else if (input.wasPressed('secondary')) this.useSelected();
+      return;
+    }
+
     this.target = game.state.mode === 'playing' && !game.building.active ? this.findTarget() : null;
     if (!inputEnabled) return;
 
@@ -35,13 +52,29 @@ export class InteractionSystem {
     const pressed = input.wasPressed('interact') || input.wasPressed('primary');
     const held = input.isDown('interact') || input.isDown('primary');
     const t = this.target;
-    if (t && (pressed || (held && t.kind === 'resource'))) {
+    const repeatable = t && (t.kind === 'resource' || (t.kind === 'animal' && !t.animal.dead));
+    if (t && (pressed || (held && repeatable))) {
       this.perform(t);
     } else if (!t && input.wasPressed('primary')) {
-      // boşa sallama (ileride saldırı)
-      player.startAction('swing', 0.5, { held: player.selectedItem?.held ?? null });
+      // boşa sallama
+      const w = this.bestWeapon();
+      player.startAction('swing', 0.5, { held: w?.def.held ?? player.selectedItem?.held ?? null });
       game.audio.play('swing');
     }
+  }
+
+  /** Saldırı silahı: elindeki hasar veren eşya; yoksa envanterdeki en yüksek hasarlısı; yoksa yumruk (null). */
+  bestWeapon() {
+    const inv = this.game.player.inventory;
+    const sel = this.game.player.selectedSlot;
+    const selDef = inv.slots[sel] && ITEMS[inv.slots[sel].id];
+    if (selDef?.damage) return { index: sel, def: selDef };
+    let best = null;
+    inv.slots.forEach((st, i) => {
+      const d = st && ITEMS[st.id];
+      if (d?.damage && (!best || d.damage > best.def.damage)) best = { index: i, def: d };
+    });
+    return best;
   }
 
   // ── Hedef seçimi ────────────────────────────────────────
@@ -93,7 +126,7 @@ export class InteractionSystem {
     let bestT = REACH;
 
     game.world.resources.forEachNear(p.x, p.z, 6, (n) => {
-      if (!n.interactable) return;
+      if (!n.interactable || Math.abs(n.y - p.y) > MAX_DY) return;
       const g = n.def.group;
       let y0 = n.y - 0.1, y1 = n.y + 0.45, r = 0.6;
       if (g === 'tree') { y1 = n.y + 3.2; r = n.collider.r + 0.12; }
@@ -107,8 +140,19 @@ export class InteractionSystem {
       }
     });
 
+    game.animals?.forEachNear(p.x, p.z, 6, (a) => {
+      if (Math.abs(a.y - p.y) > MAX_DY || game.world.inCave) return;
+      const t = a.dead
+        ? this.rayCylinder(eye, dir, a.x, a.z, a.y - 0.2, a.y + a.model.lieHeight * 2 + 0.3, a.def.length * 0.5)
+        : this.rayCylinder(eye, dir, a.x, a.z, a.y - 0.1, a.y + a.def.height, a.def.radius + 0.15);
+      if (t !== null && t < bestT) {
+        bestT = t;
+        best = { kind: 'animal', animal: a, x: a.x, y: a.y, z: a.z };
+      }
+    });
+
     for (const it of game.world.interactables) {
-      if (Math.hypot(it.x - p.x, it.z - p.z) > it.range + 1) continue;
+      if (Math.hypot(it.x - p.x, it.z - p.z) > it.range + 1 || Math.abs(it.y - p.y) > MAX_DY) continue;
       const r = it.pickRadius ?? 0.9;
       const t = this.rayCylinder(eye, dir, it.x, it.z, it.y - 1.3, it.y + (it.pickHeight ?? 1.4), r);
       if (t !== null && t < bestT + 0.5) {
@@ -150,12 +194,21 @@ export class InteractionSystem {
     };
 
     game.world.resources.forEachNear(p.x, p.z, 4.5, (n, d) => {
-      if (!n.interactable) return;
+      if (!n.interactable || Math.abs(n.y - p.y) > MAX_DY) return;
       const range = (n.collider ? n.collider.r : 0.3) + 1.9;
       consider(n.x, n.z, d, range, () => ({ kind: 'resource', node: n, x: n.x, y: n.y, z: n.z }));
     });
 
+    if (!game.world.inCave) {
+      game.animals?.forEachNear(p.x, p.z, 5, (a, d) => {
+        if (Math.abs(a.y - p.y) > MAX_DY) return;
+        const range = (a.dead ? a.def.length * 0.5 : a.def.radius) + 1.9;
+        consider(a.x, a.z, d, range, () => ({ kind: 'animal', animal: a, x: a.x, y: a.y, z: a.z }));
+      });
+    }
+
     for (const it of game.world.interactables) {
+      if (Math.abs(it.y - p.y) > MAX_DY) continue;
       const d = Math.hypot(it.x - p.x, it.z - p.z);
       consider(it.x, it.z, d, it.range, () => ({ kind: 'object', obj: it, x: it.x, y: it.y, z: it.z }));
     }
@@ -187,6 +240,16 @@ export class InteractionSystem {
       }
       return prompt;
     }
+    if (t.kind === 'animal') {
+      const a = t.animal;
+      if (!a.dead) return { action: 'Saldır', name: a.def.name, hp: a.hp / a.def.hp };
+      if (a.butchered) return null;
+      const knife = game.player.inventory.findBestTool('knife') >= 0;
+      return {
+        action: a.def.butcherAction ?? 'Parçala', name: `${a.def.name} (ölü)`,
+        disabled: !knife, note: knife ? undefined : 'Bıçak gerekli — Üretim [C] → Taş Bıçak',
+      };
+    }
     if (t.kind === 'object') return t.obj.getPrompt(game);
     if (t.kind === 'water') return { action: 'Su İç', name: 'Tatlı Su' };
     return null;
@@ -198,6 +261,9 @@ export class InteractionSystem {
     if (t.kind === 'resource') {
       if (t.node.def.mode === 'hit') this.startHit(t.node);
       else this.startGather(t.node);
+    } else if (t.kind === 'animal') {
+      if (t.animal.dead) this.startButcher(t.animal);
+      else this.startAttack(t.animal);
     } else if (t.kind === 'object') {
       t.obj.interact(game);
     } else if (t.kind === 'water') {
@@ -242,6 +308,69 @@ export class InteractionSystem {
     game.audio.play('swing');
   }
 
+  // ── Av ──────────────────────────────────────────────────
+  startAttack(a) {
+    const { game } = this;
+    const player = game.player;
+    const weapon = this.bestWeapon();
+    const tired = player.stats.stamina < 3;
+    const speed = tired ? 1.4 : weapon ? 1 : 0.85;
+    player.startAction('swing', SWING_TIME * speed, {
+      impactAt: SWING_IMPACT * speed,
+      target: a,
+      held: weapon?.def.held ?? null,
+      onImpact: () => this.applyAttack(a, weapon),
+    });
+    game.audio.play('swing');
+  }
+
+  applyAttack(a, weapon) {
+    const { game } = this;
+    if (a.dead) return;
+    const p = game.player.position;
+    if (Math.hypot(a.x - p.x, a.z - p.z) > ATTACK_REACH + a.def.radius) {
+      game.audio.play('swing', { volume: 0.6 });
+      return; // ıskaladı (hayvan kaçtı)
+    }
+    const base = weapon?.def.damage ?? FIST_DAMAGE;
+    const dmg = base * (1 + game.progression.bonus('damage'));
+    const killed = game.animals.hit(a, dmg, p.x, p.z);
+    if (weapon) {
+      const inv = game.player.inventory;
+      const id = inv.slots[weapon.index]?.id;
+      if (id && ITEMS[id] === weapon.def) {
+        const gone = inv.wear(weapon.index, 1 - game.progression.bonus('durability'));
+        if (gone) game.notify(`${ITEMS[gone].name} kırıldı!`, 'warn');
+      }
+    }
+    game.player.stats.useStamina(3);
+    game.cameraController.impact(killed ? 0.1 : 0.05);
+    game.audio.play('hit');
+  }
+
+  startButcher(a) {
+    const { game } = this;
+    const player = game.player;
+    const idx = player.inventory.findBestTool('knife');
+    if (idx < 0) {
+      this.error('Hayvanı parçalamak için bir bıçak gerekiyor. (Üretim → Taş Bıçak)');
+      return;
+    }
+    player.startAction('butcher', 1.5, {
+      target: a,
+      held: 'knife',
+      onComplete: () => {
+        if (a.butchered) return;
+        const i = player.inventory.findBestTool('knife');
+        if (i < 0) return;
+        game.animals.butcher(a);
+        const gone = player.inventory.wear(i, 2 * (1 - game.progression.bonus('durability')));
+        if (gone) game.notify(`${ITEMS[gone].name} kırıldı!`, 'warn');
+      },
+    });
+    game.audio.play('butcher');
+  }
+
   applyHit(node, toolType) {
     const { game } = this;
     if (!node.interactable) return;
@@ -277,7 +406,16 @@ export class InteractionSystem {
     }
     player.stats.useStamina(2);
     const py = node.y + (isTree ? 1.2 : 0.7);
-    game.world.particles.emit(def.particle, node.x, py, node.z);
+    // talaş/taş kırıntısı vuruş noktasından oyuncuya doğru saçılır
+    const toP = Math.atan2(player.position.x - node.x, player.position.z - node.z);
+    const off = isTree ? (node.collider?.r ?? 0.4) : 0.6;
+    game.world.particles.emit(def.particle, node.x + Math.sin(toP) * off, py, node.z + Math.cos(toP) * off);
+    if (isTree && !destroyed) {
+      // her vuruşta tepeden birkaç yaprak dökülür
+      const cy = node.y + (def.crownY ?? 7) * node.scale * 0.85;
+      game.world.particles.emit(def.leafParticle ?? 'leaf', node.x + (Math.random() - 0.5) * 2, cy, node.z + (Math.random() - 0.5) * 2, 0.9);
+    }
+    game.cameraController.impact(0.035);
     game.audio.play(def.sound);
   }
 
@@ -301,7 +439,13 @@ export class InteractionSystem {
     const depleted = game.world.resources.consumeUse(node);
     const drops = rollDrops(def.drops, game.progression.bonus('extraYield'));
     for (const [toolType, table] of Object.entries(def.toolBonus ?? {})) {
-      if (inv.findBestTool(toolType) >= 0) drops.push(...rollDrops(table));
+      const idx = inv.findBestTool(toolType);
+      if (idx < 0) continue;
+      drops.push(...rollDrops(table));
+      if (toolType === 'rod') {
+        const gone = inv.wear(idx, 1 - game.progression.bonus('durability'));
+        if (gone) game.notify(`${ITEMS[gone].name} kırıldı!`, 'warn');
+      }
     }
     if (def.group === 'fish') {
       game.state.stats.fishCaught += drops.reduce((a, d) => a + (d.item === 'raw_fish' ? d.amount : 0), 0);
@@ -335,11 +479,19 @@ export class InteractionSystem {
     }
   }
 
-  /** Seçili hızlı slottaki eşyayı kullan (yiyecek → ye). */
+  /** Seçili hızlı slottaki eşyayı kullan (yiyecek → ye, taşıt → suya indir). */
   useSelected() {
     const p = this.game.player;
     const stack = p.selectedStack;
-    if (stack) this.consume(p.selectedSlot);
+    if (!stack) return;
+    const def = ITEMS[stack.id];
+    if (def?.vehicle) {
+      if (p.mounted) return;
+      if (!this.game.building.startPlacement(def.vehicle)) this.error('Burada suya indiremezsin.');
+      else this.game.notify(`${def.icon} Suya bak ve [Sol tık] ile indir. [R] döndürür.`, 'info');
+      return;
+    }
+    this.consume(p.selectedSlot);
   }
 
   consume(slotIndex) {

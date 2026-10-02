@@ -15,11 +15,13 @@ import { DistantIslands } from './DistantIslands.js';
 import { Particles } from './Particles.js';
 import { LightPool } from './LightPool.js';
 import { ItemDrops } from './ItemDrops.js';
-import { sharedMaterials } from './Models.js';
+import { Cave } from './Cave.js';
+import { Ripples } from './Ripples.js';
+import { sharedMaterials, windUniforms } from './Models.js';
 
 /**
  * Dünyayı oluşturan tüm parçaları bir araya getirir: ada, arazi, su, gökyüzü,
- * kaynaklar, önemli noktalar, süslemeler ve atmosfer.
+ * kaynaklar, önemli noktalar, süslemeler, mağara ve atmosfer.
  */
 export class WorldManager {
   constructor(game, islandId = 'novera') {
@@ -39,7 +41,13 @@ export class WorldManager {
     this.collision = new CollisionWorld();
     this.interactables = new Set();
     this.particles = new Particles(scene);
+    this.ripples = new Ripples(scene);
     this.lights = new LightPool(scene, 3);
+
+    // dağın altındaki mağara (yüzeyden ayrı, kapalı alan)
+    this.inCave = false;
+    this.cave = this.island.def.cave ? new Cave(this, this.island.def.cave) : null;
+    if (this.cave) scene.add(this.cave.group);
 
     this.landmarks = new Landmarks(this);
     scene.add(this.landmarks.group);
@@ -49,6 +57,7 @@ export class WorldManager {
     this.resources = new ResourceManager(this);
     this.resources.generate(exclusions);
     scene.add(this.resources.group);
+    if (this.cave) this.cave.group.add(this.resources.caveGroup);
 
     // büyük kayalar başlangıç sahilini kapatmasın
     this.decor = new DecorScatter(this, [...exclusions, { x: spawn.x, z: spawn.z, r: 16 }]);
@@ -73,6 +82,13 @@ export class WorldManager {
 
     // Kamera çarpışması için engel listesi (yapılar, önemli noktalar)
     this.cameraBlockers = this.landmarks.group.children.filter((c) => c.isMesh && c.material === sharedMaterials.standard);
+
+    // mağaradayken gizlenen yüzey nesneleri (hayvanlar, tekneler… kendilerini ekler)
+    this.surfaceObjects = [
+      this.terrain.mesh, this.water.group, this.resources.group, this.decor.group, this.grass.group,
+      this.ambience.group, this.distant.group, this.buildingsGroup, this.landmarks.group,
+      this.dayNight.sky, this.dayNight.stars, ...this.clouds.meshes,
+    ];
   }
 
   get spawnPoint() {
@@ -80,12 +96,32 @@ export class WorldManager {
     return { x: s.x, y: this.terrain.getHeight(s.x, s.z), z: s.z };
   }
 
+  registerSurfaceObject(obj) {
+    this.surfaceObjects.push(obj);
+    obj.visible = !this.inCave;
+  }
+
+  /** Mağara moduna geç / çık: yüzey gizlenir, ışık ve sis mağaraya göre ayarlanır. */
+  setCaveMode(on) {
+    if (!this.cave || this.inCave === on) return;
+    this.inCave = on;
+    for (const o of this.surfaceObjects) o.visible = !on;
+    this.cave.group.visible = on;
+    this.dayNight.setCaveMode(on);
+    for (const m of this.cave.blockers) {
+      if (on) this.addCameraBlocker(m);
+      else this.removeCameraBlocker(m);
+    }
+  }
+
   getHeight(x, z) {
+    if (this.inCave) return this.cave.floorHeight(x, z);
     return this.terrain.getHeight(x, z);
   }
 
-  /** Arazi + üzerine çıkılabilen platformlar (kulübe tabanı). */
+  /** Arazi + üzerine çıkılabilen platformlar (kulübe tabanı). Mağarada mağara tabanı. */
   getGroundHeight(x, z, currentY = Infinity) {
+    if (this.inCave) return this.cave.floorHeight(x, z);
     const h = this.terrain.getHeight(x, z);
     const p = this.collision.platformHeight(x, z, currentY + 0.65);
     return Math.max(h, p);
@@ -93,6 +129,7 @@ export class WorldManager {
 
   /** (x,z) noktasında su yüzeyi yüksekliği; su yoksa null. */
   waterSurfaceAt(x, z) {
+    if (this.inCave) return null;
     const lake = this.island.lake;
     if (Math.hypot(x - lake.x, z - lake.z) < lake.radius * 1.6) {
       return this.terrain.getHeight(x, z) < lake.level ? lake.level : null;
@@ -101,9 +138,15 @@ export class WorldManager {
   }
 
   isFreshWaterNear(x, z, margin = 2.2) {
+    if (this.inCave) return false;
     const lake = this.island.lake;
     const d = Math.hypot(x - lake.x, z - lake.z);
     return d < lake.radius * 1.35 + margin;
+  }
+
+  /** Çarpışma katmanı: mağarada 'cave', yüzeyde 'surface'. */
+  get collisionLayer() {
+    return this.inCave ? 'cave' : 'surface';
   }
 
   addInteractable(obj) {
@@ -116,7 +159,7 @@ export class WorldManager {
   }
 
   addCameraBlocker(mesh) {
-    this.cameraBlockers.push(mesh);
+    if (!this.cameraBlockers.includes(mesh)) this.cameraBlockers.push(mesh);
   }
 
   removeCameraBlocker(mesh) {
@@ -126,6 +169,7 @@ export class WorldManager {
 
   update(dt, ctx) {
     const { hour, focus, camera, elapsed } = ctx;
+    windUniforms.uWindTime.value += dt;
     this.occlusion.uCamPos.value.copy(camera.position);
     // 3. şahısta: kamera–oyuncu arası + kameraya çok yakın yapraklar şeffaflaşır; 1. şahısta kapalı
     if (ctx.occlusionFocus) this.occlusion.uFocus.value.copy(ctx.occlusionFocus);
@@ -133,16 +177,22 @@ export class WorldManager {
     this.occlusion.uNear.value = ctx.occlusionFocus ? 1 : 0;
     this.dayNight.update(hour, focus, camera.position);
     const env = this.dayNight.env;
-    this.water.update(dt, env);
     this.resources.update(dt, elapsed, focus, camera.position);
-    this.decor.update(camera.position);
     this.landmarks.update(dt);
+    this.particles.update(dt);
+    this.ripples.update(dt);
+    this.drops.update(dt);
+    if (this.inCave) {
+      this.cave.update(dt);
+      this.lights.update(dt, focus, 1);
+      return;
+    }
+    this.water.update(dt, env);
+    this.decor.update(camera.position);
     this.grass.update(dt, focus);
     this.clouds.update(dt, env);
     this.ambience.update(dt, focus, env, this.game);
     this.distant.update(dt, env, this.game.scene.fog.color);
-    this.particles.update(dt);
     this.lights.update(dt, focus, env.nightFactor);
-    this.drops.update(dt);
   }
 }

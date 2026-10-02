@@ -213,7 +213,8 @@ export class HUD {
     bus.on('player:warning', ({ message }) => this.toast(`⚠️ ${message}`, 'warn'));
     bus.on('build:mode', () => this.renderHints());
     bus.on('chapter:completed', ({ chapter }) => {
-      this.banner(`Bölüm ${chapter} Tamamlandı`, 'Adanın Sırrı', 'Devamı yakında: mağaralar, demir çağı, tekneler ve yeni adalar…', 7);
+      if (chapter === 1) this.banner('Bölüm 1 Tamamlandı', 'Adanın Sırrı', 'Sırada: dağın altındaki mağara ve demir…', 7);
+      else this.banner(`Bölüm ${chapter} Tamamlandı`, 'Derinliklerin Sesi', 'Devamı yakında: fırın, demir çağı ve yeni adalar…', 7);
     });
     bus.on('perk:points', () => this.updateRight());
     bus.on('ambience:creature', () => {
@@ -276,7 +277,7 @@ export class HUD {
         const target = o.amount ?? 1;
         const cur = Math.floor(state.progress[i]);
         const done = cur >= target;
-        const count = o.type === 'walk' ? `${cur}/${target} m` : target > 1 ? `${cur}/${target}` : done ? '✓' : '';
+        const count = o.type === 'walk' || o.type === 'sail' ? `${cur}/${target} m` : target > 1 ? `${cur}/${target}` : done ? '✓' : '';
         item.append(h('div', { class: `qt-obj ${done ? 'done' : ''}` }, h('span', {}, `${done ? '✔' : '○'} ${o.label}`), h('span', { class: 'count' }, count)));
       });
       if (quest.hint && quest.type !== 'side') item.append(h('div', { class: 'qt-hint' }, `💡 ${quest.hint}`));
@@ -285,7 +286,7 @@ export class HUD {
     if (!list.length && this.game.quests.isCompleted('q_sealed_door')) {
       this.tracker.append(h('div', { class: 'qt-item' },
         h('div', { class: 'qt-type' }, 'Serbest Oyun'),
-        h('div', { class: 'qt-title' }, 'Bölüm 1 tamamlandı'),
+        h('div', { class: 'qt-title' }, this.game.quests.isCompleted('q_miner') ? 'Bölüm 2 tamamlandı' : 'Bölüm 1 tamamlandı'),
         h('div', { class: 'qt-hint' }, 'Üssünü büyüt, yan görevleri tamamla ve adayı keşfetmeye devam et.'),
       ));
     }
@@ -530,7 +531,7 @@ export class HUD {
         h('span', {}, kbd(s.rotate?.[0]), ' Döndür'),
         h('span', {}, kbd(s.secondary?.[0]), ' / ', kbd('Escape'), ' İptal'),
       ),
-      reason ? h('div', { class: 'bh-reason' }, reason) : null,
+      ...(reason ? [h('div', { class: 'bh-reason' }, reason)] : []),
     );
   }
 }

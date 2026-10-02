@@ -18,6 +18,8 @@ export class GameState {
       fishCaught: 0,
       itemsCrafted: 0,
       buildingsPlaced: 0,
+      animalsHunted: 0,
+      distanceSailed: 0,
       deaths: 0,
     };
     this.spawnPoint = null;

@@ -122,6 +122,7 @@ export class InventoryUI extends Panel {
 
     const actions = [];
     if (def.food) actions.push(h('button', { class: 'btn small primary', onclick: () => this.quickUse(this.selected) }, def.consumeVerb ?? 'Ye'));
+    if (def.vehicle) actions.push(h('button', { class: 'btn small primary', onclick: () => this.quickUse(this.selected) }, '🌊 Suya İndir'));
     if (this.selected >= HOTBAR_SIZE) {
       actions.push(h('button', { class: 'btn small', onclick: () => this.toHotbar(this.selected) }, 'Hızlı slota taşı'));
     } else {
@@ -167,6 +168,10 @@ export class InventoryUI extends Panel {
     const def = ITEMS[stack.id];
     if (def.food) {
       g.interaction.consume(i);
+    } else if (def.vehicle) {
+      g.ui.close();
+      if (!g.building.startPlacement(def.vehicle)) g.notify('Bir taşıtı suya indirmek için kıyıda olmalısın.', 'warn');
+      else g.notify(`${def.icon} Suya bak ve [Sol tık] ile indir. [R] döndürür.`, 'info');
     } else if (i < HOTBAR_SIZE) {
       g.player.selectSlot(i);
     } else {

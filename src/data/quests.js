@@ -13,9 +13,12 @@
 //   regions  { amount }                 → keşfedilen bölge sayısı
 //   sleep / drink { amount }            → uyu / tatlı su iç
 //   level / day { amount }              → seviye / hayatta kalınan gün
+//   kill / butcher { animal?, amount }  → hayvan avla / bıçakla parçala
+//   sail { amount }                     → sal/tekneyle gidilen mesafe (m)
 //
 // marker: hedefin pusula ve ekranda gösterilmesi
 //   { resource: 'fiber_bush' } en yakın kaynak | { landmark: 'wreck' } | { landmarks: [...] } | { region: 'lake' }
+//   { animal: 'sheep' } en yakın hayvan (animal: true → herhangi biri)
 //
 // rewards: { xp, items, recipes, buildings, features, perkPoints, lore }
 
@@ -84,7 +87,7 @@ export const QUESTS = {
     hint: 'Bir ağaca yaklaş, [E] veya sol tık ile vur. Basılı tutarsan vurmaya devam edersin.',
     objectives: [{ type: 'fell', group: 'tree', amount: 1, label: 'Bir ağaç kes' }],
     marker: { resource: 'palm_tree' },
-    rewards: { xp: 40, recipes: ['stone_pickaxe'] },
+    rewards: { xp: 40, recipes: ['stone_pickaxe', 'stone_knife'] },
     next: ['q_stone'],
     side: ['s_coconut', 's_lumberjack'],
   },
@@ -111,7 +114,7 @@ export const QUESTS = {
     desc: 'Ateş; sıcaklık, ışık ve pişmiş yemek demek. Artık inşa edebilirsin.',
     hint: '[B] ile İnşa menüsünü aç, Kamp Ateşi\'ni seç. Sol tık yerleştirir, [R] döndürür.',
     objectives: [{ type: 'build', building: 'campfire', amount: 1, label: 'Kamp ateşi kur' }],
-    rewards: { xp: 50, recipes: ['cooked_fish', 'berry_skewer'] },
+    rewards: { xp: 50, recipes: ['cooked_fish', 'berry_skewer', 'cooked_meat'] },
     next: ['q_cook'],
   },
   q_cook: {
@@ -127,20 +130,45 @@ export const QUESTS = {
   q_shelter: {
     type: 'main', title: 'İlk Sığınağın',
     desc: 'Hava kararmadan kendine bir sığınak kur. Geceleri bu adada yalnız olmayabilirsin…',
-    hint: '[B] İnşa menüsünden Küçük Kulübe\'yi seç. Düz bir zemin bul.',
+    hint: '[B] İnşa menüsünden Küçük Kulübe\'yi seç. Düz bir zemin bul; önizleme kırmızıysa bir şeyle çakışıyordur.',
     objectives: [
       { type: 'collect', item: 'wood', amount: 20, label: 'Odun topla' },
       { type: 'collect', item: 'stone', amount: 10, label: 'Taş topla' },
       { type: 'collect', item: 'fiber', amount: 8, label: 'Lif topla' },
       { type: 'build', building: 'hut', amount: 1, label: 'Küçük Kulübe inşa et' },
     ],
-    rewards: { xp: 100, buildings: ['chest'] },
+    rewards: { xp: 100, buildings: ['chest', 'bed'], recipes: ['wool_blanket'] },
+    next: ['q_hunt'],
+  },
+  q_hunt: {
+    type: 'main', title: 'Av Zamanı',
+    desc: 'Çayırlarda otlayan inekler, koyunlar ve tavuklar var. Et, deri, yün ve tüy hayatta kalmanın anahtarı olacak.',
+    hint: 'Taş Bıçak üret. Bir hayvanı avla (sol tık), sonra bıçakla [E] parçala. Pişirmek için kamp ateşini kullan.',
+    objectives: [
+      { type: 'craft', item: 'stone_knife', amount: 1, label: 'Taş Bıçak üret' },
+      { type: 'kill', amount: 1, label: 'Bir hayvan avla', marker: { animal: true } },
+      { type: 'butcher', amount: 1, label: 'Avını bıçakla parçala' },
+    ],
+    rewards: { xp: 90 },
+    next: ['q_bed'],
+    side: ['s_hunter'],
+  },
+  q_bed: {
+    type: 'main', title: 'Sıcak Bir Yatak',
+    desc: 'Kulüben hazır ama çıplak zeminde uyunmaz. Koyun yününden bir battaniye ör ve kendine bir yatak yap.',
+    hint: 'Koyun avlayıp yününü al. [C] ile Yün Battaniye ör, sonra [B] ile Yatak kur — kulübenin içine koymayı unutma.',
+    objectives: [
+      { type: 'collect', item: 'wool', amount: 3, label: 'Yün topla', marker: { animal: 'sheep' } },
+      { type: 'craft', item: 'wool_blanket', amount: 1, label: 'Yün Battaniye ör' },
+      { type: 'build', building: 'bed', amount: 1, label: 'Yatak kur' },
+    ],
+    rewards: { xp: 100 },
     next: ['q_first_night'],
   },
   q_first_night: {
     type: 'main', title: 'İlk Gece',
     desc: 'Erzakını sakla, ateşin yanında kal ve sabahı bekle. Karanlıkta bir şeylerin seni izlediğini hissediyorsun.',
-    hint: 'Sandık kur. Akşam 19:00\'dan sonra kulübede [E] ile uyuyabilirsin.',
+    hint: 'Sandık kur. Akşam 19:00\'dan sonra yatağında [E] ile uyuyabilirsin.',
     objectives: [
       { type: 'build', building: 'chest', amount: 1, label: 'Sandık kur' },
       { type: 'sleep', amount: 1, label: 'Kulübende uyu ve sabahı bekle' },
@@ -156,7 +184,7 @@ export const QUESTS = {
     objectives: [{ type: 'build', building: 'workbench', amount: 1, label: 'Çalışma Masası kur' }],
     rewards: { xp: 60, recipes: ['stone_spear'], features: ['techtree'] },
     next: ['q_old_camp'],
-    side: ['s_backpack'],
+    side: ['s_backpack', 's_vines', 's_sailor'],
   },
   q_old_camp: {
     type: 'main', title: 'Ormandaki Bayrak',
@@ -183,8 +211,44 @@ export const QUESTS = {
     objectives: [{ type: 'interact', target: 'sealed_door', label: 'Mühürlü kapıyı incele' }],
     marker: { landmark: 'sealed_door' },
     rewards: { xp: 150 },
-    next: [],
+    next: ['q_cave'],
     chapterEnd: 1,
+  },
+
+  // ── Bölüm 2: Derinlikler ─────────────────────────────────
+  q_cave: {
+    type: 'main', title: 'Adanın Derinlikleri',
+    desc: 'Kapının ardından gelen çekiç sesi… Dağın batı yamacında, rüzgârın içine çekildiği karanlık bir yarık olmalı.',
+    hint: 'Dağın batı eteğindeki mağara girişini bul. İçerisi karanlık — yanına meşale al.',
+    objectives: [
+      { type: 'discover', landmark: 'cave_entrance', label: 'Mağara girişini bul' },
+      { type: 'region', region: 'cave', label: 'Mağaraya gir' },
+    ],
+    marker: { landmark: 'cave_entrance' },
+    rewards: { xp: 120 },
+    next: ['q_cave_ore'],
+    side: ['s_crystals'],
+  },
+  q_cave_ore: {
+    type: 'main', title: 'Demir Damarı',
+    desc: 'Mağara duvarlarında koyu, paslı damarlar var. Demir! Ve yanında kömür.',
+    hint: 'Kazmanla demir ve kömür damarlarını kaz.',
+    objectives: [
+      { type: 'collect', item: 'iron_ore', amount: 4, label: 'Demir cevheri topla', marker: { resource: 'iron_ore' } },
+      { type: 'collect', item: 'coal', amount: 4, label: 'Kömür topla', marker: { resource: 'coal_ore' } },
+    ],
+    rewards: { xp: 160 },
+    next: ['q_miner'],
+  },
+  q_miner: {
+    type: 'main', title: 'Madencinin İzleri',
+    desc: 'Mağaranın en derin odasında birinin kamp kurduğu belli. Kazmalar, bir fener… ve bir defter.',
+    hint: 'Mağaranın doğu odasındaki madenci kampını bul ve defteri oku.',
+    objectives: [{ type: 'interact', target: 'miner_camp', label: 'Madencinin defterini oku' }],
+    marker: { landmark: 'miner_camp' },
+    rewards: { xp: 220, perkPoints: 1 },
+    next: [],
+    chapterEnd: 2,
   },
 
   // ── Yan görevler ─────────────────────────────────────────
@@ -243,6 +307,36 @@ export const QUESTS = {
     desc: 'Günleri saymaya başladın.',
     objectives: [{ type: 'day', amount: 3, label: '3. güne ulaş' }],
     rewards: { xp: 150 },
+  },
+  s_hunter: {
+    type: 'side', title: 'Usta Avcı',
+    desc: 'Et ve deri her zaman lazım.',
+    objectives: [{ type: 'kill', amount: 5, label: 'Hayvan avla', marker: { animal: true } }],
+    rewards: { xp: 150, perkPoints: 1 },
+  },
+  s_vines: {
+    type: 'side', title: 'Sarmaşık Halat',
+    desc: 'Ormandaki sarmaşıklar bükülünce sağlam bir halat olur.',
+    objectives: [
+      { type: 'collect', item: 'vine', amount: 6, label: 'Sarmaşık topla', marker: { resource: 'vine_tangle' } },
+      { type: 'craft', item: 'rope', amount: 2, label: 'Halat ör' },
+    ],
+    rewards: { xp: 80 },
+  },
+  s_sailor: {
+    type: 'side', title: 'Denize Açıl',
+    desc: 'Seviye 4\'te çalışma masasında bir sal yapabilirsin. Kıyı boyunca kürek çekmek adayı yeni bir gözle görmeni sağlar.',
+    objectives: [
+      { type: 'craft', item: 'raft', amount: 1, label: 'Sal üret (Seviye 4)' },
+      { type: 'sail', amount: 150, label: 'Salla kürek çek' },
+    ],
+    rewards: { xp: 150 },
+  },
+  s_crystals: {
+    type: 'side', title: 'Karanlıkta Işık',
+    desc: 'Mağaranın kristalleri hiç sönmüyor. Bir fener yapsan üssün geceleri de aydınlık olur.',
+    objectives: [{ type: 'collect', item: 'crystal', amount: 2, label: 'Kristal topla', marker: { resource: 'crystal_node' } }],
+    rewards: { xp: 120 },
   },
   s_backpack: {
     type: 'side', title: 'Daha Fazla Yer',

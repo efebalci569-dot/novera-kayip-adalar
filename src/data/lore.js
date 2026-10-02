@@ -52,4 +52,15 @@ export const LORE = {
       'Bu kapıyı açmak için daha güçlü aletlere — ve adanın derinliklerindeki demire — ihtiyacın olacak.',
     ],
   },
+  miner_note: {
+    title: 'Madencinin Defteri',
+    text: [
+      'Kırk üçüncü gün. Fenerimdeki yağ azalıyor ama kristaller yolu aydınlatıyor. Bu taşlar kendi kendine parlıyor — ilk geldiğimde inanamamıştım.',
+      'D. haklıymış: kapı demirle açılıyor. Kapının mekanizması demir dişlilerle dolu; sembol parçaları onları sadece uyandırıyor.',
+      'Burada bol demir var, kömür de. Bir fırın kurup demiri eritebilirsem kapıyı açacak bir kol dökebilirim. Ateşin yanına taş dizmeye başladım bile.',
+      'Bazı geceler mağaranın derinlerinden bir uğultu geliyor. Taşlar titriyor. Sanki dağın altında bir şey nefes alıyor…',
+      'Eğer bunu okuyorsan ve ben dönmediysem: demiri al, ateşi büyüt. Ve ufuktaki dumanlı adaya bak — orada da biri var.',
+      '— M.',
+    ],
+  },
 };

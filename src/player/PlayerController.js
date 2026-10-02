@@ -20,6 +20,7 @@ export class PlayerController {
     this.stepTimer = 0;
     this.limitWarnCooldown = 0;
     this.fallPeak = null;
+    this.strokeTimer = 0;
   }
 
   /** Yere iniş: yeterince yüksekten düşüldüyse can yakar. */
@@ -43,6 +44,16 @@ export class PlayerController {
     if (player.teleported) {
       player.teleported = false;
       this.fallPeak = null;
+    }
+    // teknedeyken konumu VehicleSystem belirler
+    if (player.mounted) {
+      player.swimming = false;
+      player.wading = false;
+      player.grounded = true;
+      player.running = false;
+      player.velocity.set(0, 0, 0);
+      this.fallPeak = null;
+      return;
     }
 
     let mx = 0;
@@ -98,7 +109,9 @@ export class PlayerController {
     }
     pos.x = nx;
     pos.z = nz;
-    world.collision.resolveCircle(pos, player.radius, pos.y);
+    world.collision.resolveCircle(pos, player.radius, pos.y, world.collisionLayer);
+    if (world.inCave) world.cave.constrain(pos, player.radius);
+    else game.animals?.pushPlayer(pos, player.radius);
 
     // açık deniz sınırı
     const r = Math.hypot(pos.x, pos.z);
@@ -129,6 +142,24 @@ export class PlayerController {
       if (!wasSwimming) {
         game.audio.play('splash');
         world.particles.emit('water', pos.x, surface, pos.z, 1.5);
+        world.ripples.emit(pos.x, surface, pos.z, 2.2, 1.4, 0.5);
+      }
+      // kulaç halkaları ve sıçramalar (kol hareketleriyle aynı ritimde)
+      const moving = Math.hypot(player.velocity.x, player.velocity.z) > 0.6;
+      this.strokeTimer -= dt;
+      if (this.strokeTimer <= 0) {
+        this.strokeTimer = moving ? 0.5 : 1.5;
+        const fx = Math.sin(player.yaw), fz = Math.cos(player.yaw);
+        if (moving) {
+          const side = player.model.strokeSide ?? 1;
+          const sx = Math.cos(player.yaw) * side * 0.35;
+          const sz = -Math.sin(player.yaw) * side * 0.35;
+          world.ripples.emit(pos.x + fx * 0.9 + sx, surface, pos.z + fz * 0.9 + sz, 1.1, 1.0, 0.4);
+          world.particles.emit('water', pos.x + fx * 0.9 + sx, surface + 0.05, pos.z + fz * 0.9 + sz, 0.35);
+          game.audio.play('swim', { volume: 0.45 });
+        } else {
+          world.ripples.emit(pos.x, surface, pos.z, 1.5, 1.8, 0.3);
+        }
       }
     } else {
       if (inputEnabled && input.wasPressed('jump') && player.grounded && !player.action) {

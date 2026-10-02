@@ -32,6 +32,7 @@ export class Player {
 
     this.action = null;
     this.actionHeld = false;
+    this.mounted = null; // bindiği tekne (VehicleSystem)
 
     this.torchLight = game.world.lights.add({
       x: 0, y: 0, z: 0, color: '#ffb35c', intensity: 7.5, distance: 18, flicker: true, priority: 100, enabled: false,
@@ -65,6 +66,11 @@ export class Player {
 
   refreshHeld() {
     if (this.action && this.actionHeld) return;
+    if (this.mounted?.type === 'raft') {
+      // salda elde kürek (teknede seçili eşya tutulabilir, ör. gece meşale)
+      this.model.setHeld('paddle');
+      return;
+    }
     this.model.setHeld(this.selectedItem?.held ?? null);
   }
 
@@ -135,6 +141,9 @@ export class Player {
       running: this.running,
       grounded: this.grounded,
       swimming: this.swimming,
+      sitting: !!this.mounted,
+      rowing: this.mounted?.type === 'raft' ? Math.abs(this.mounted.speed) : 0,
+      steering: this.mounted?.type === 'boat',
       action: this.action ? { type: this.action.type, k: this.action.t / this.action.dur } : null,
     });
 

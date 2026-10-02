@@ -115,7 +115,7 @@ export class MapUI extends Panel {
       h('div', { class: 'section-title', style: { marginTop: '12px' } }, 'Önemli Noktalar'),
       ...ex.visibleLandmarks().map((e) => h('div', { class: 'row' }, e.def.icon, ex.isLandmarkDiscovered(e.id) ? e.def.name : `${e.def.name} (işaretli)`)),
       h('div', { class: 'section-title', style: { marginTop: '12px' } }, 'İşaretler'),
-      h('div', { class: 'row' }, '➤', 'Sen'),
+      h('div', { class: 'row' }, '➤', g.world.inCave ? 'Sen (mağarada, dağın altında)' : 'Sen'),
       h('div', { class: 'row' }, h('span', { style: { color: '#ffc857' } }, '◆'), 'Görev hedefi'),
       h('div', { class: 'row', style: { color: '#a9b4b8', marginTop: '8px', fontSize: '12px' } }, `Keşfedilen: ${ex.discoveredRegions.size}/${discoverable.length} bölge`),
     );
@@ -146,6 +146,11 @@ export class MapUI extends Panel {
     for (const b of g.building.buildings) {
       const [x, y] = this.toMap(b.x, b.z);
       ctx.fillText(BUILDINGS[b.type].icon, x, y);
+    }
+    for (const b of g.vehicles.boats) {
+      if (b === g.vehicles.mounted) continue;
+      const [x, y] = this.toMap(b.x, b.z);
+      ctx.fillText(b.def.icon, x, y);
     }
     ctx.font = '22px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
     for (const e of ex.visibleLandmarks()) {

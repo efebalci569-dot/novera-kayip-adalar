@@ -15,6 +15,7 @@ export class AudioManager {
     this.nextCricket = 1;
     this.nextMusic = 25;
     this.nextCrackle = 0;
+    this.nextDrip = 1;
     this.time = 0;
     settings.onChange(() => this.applyVolumes());
   }
@@ -253,6 +254,76 @@ export class AudioManager {
         this.tone({ freq: 180, freqEnd: 70, dur: 0.2, vol: 0.3 * v });
         this.noise({ dur: 0.12, vol: 0.2 * v, freq: 500 });
         break;
+      case 'moo': {
+        // alçak, burundan gelen "möö": testere dişi + biçimlendirici süzgeç
+        const t0 = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(118 * r, t0);
+        osc.frequency.linearRampToValueAtTime(132 * r, t0 + 0.35);
+        osc.frequency.linearRampToValueAtTime(96 * r, t0 + 1.2);
+        const f = this.ctx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.setValueAtTime(420, t0);
+        f.frequency.linearRampToValueAtTime(900, t0 + 0.4);
+        f.frequency.linearRampToValueAtTime(380, t0 + 1.2);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.16 * v, t0 + 0.15);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.3);
+        osc.connect(f); f.connect(g); g.connect(this.sfx);
+        osc.start(t0); osc.stop(t0 + 1.35);
+        break;
+      }
+      case 'baa': {
+        const t0 = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(330 * r, t0);
+        osc.frequency.linearRampToValueAtTime(300 * r, t0 + 0.55);
+        const lfo = this.ctx.createOscillator();
+        lfo.frequency.value = 17;
+        const lg = this.ctx.createGain();
+        lg.gain.value = 22;
+        lfo.connect(lg); lg.connect(osc.frequency);
+        const f = this.ctx.createBiquadFilter();
+        f.type = 'bandpass'; f.frequency.value = 1100; f.Q.value = 1.4;
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.12 * v, t0 + 0.06);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.6);
+        osc.connect(f); f.connect(g); g.connect(this.sfx);
+        osc.start(t0); lfo.start(t0); osc.stop(t0 + 0.65); lfo.stop(t0 + 0.65);
+        break;
+      }
+      case 'cluck':
+        for (let i = 0; i < 3; i++) {
+          this.tone({ type: 'square', freq: (720 + Math.random() * 120) * r, freqEnd: 420, dur: 0.07, vol: 0.05 * v, delay: i * 0.11 });
+          this.noise({ dur: 0.05, vol: 0.06 * v, freq: 1800, q: 3, delay: i * 0.11 });
+        }
+        break;
+      case 'hit':
+        this.noise({ dur: 0.1, vol: 0.3 * v, type: 'lowpass', freq: 900 * r });
+        this.tone({ freq: 140 * r, freqEnd: 70, dur: 0.12, vol: 0.25 * v });
+        break;
+      case 'butcher':
+        for (let i = 0; i < 4; i++) this.noise({ dur: 0.08, vol: 0.14 * v, freq: 1300 * r, q: 2.2, delay: i * 0.3 });
+        break;
+      case 'crystal':
+        [1567.98, 2093, 2637].forEach((fq, i) => this.tone({ type: 'triangle', freq: fq * r, dur: 0.6, vol: 0.06 * v, delay: i * 0.05 }));
+        this.noise({ dur: 0.08, vol: 0.2 * v, type: 'highpass', freq: 3000 });
+        break;
+      case 'paddle':
+        this.noise({ dur: 0.35, vol: 0.16 * v, type: 'lowpass', freq: 1600, freqEnd: 400 });
+        this.noise({ dur: 0.2, vol: 0.08 * v, freq: 2200, q: 0.8, delay: 0.15 });
+        break;
+      case 'swim':
+        this.noise({ dur: 0.28, vol: 0.15 * v, type: 'lowpass', freq: 2000 * r, freqEnd: 500 });
+        break;
+      case 'cave':
+        this.noise({ dur: 1.4, vol: 0.18 * v, type: 'lowpass', freq: 500, freqEnd: 120, attack: 0.3 });
+        this.tone({ freq: 55, freqEnd: 45, dur: 1.6, vol: 0.12 * v, attack: 0.3 });
+        break;
       case 'howl': {
         const t0 = this.ctx.currentTime;
         const osc = this.ctx.createOscillator();
@@ -312,7 +383,7 @@ export class AudioManager {
 
   /**
    * Ortam seslerini oyuncunun konumuna ve saate göre ayarlar.
-   * ctx: { coast, forest, altitude, night, nearFire, active }
+   * ctx: { coast, forest, altitude, night, nearFire, cave, active }
    */
   update(dt, c) {
     if (!this.ready) return;
@@ -320,8 +391,9 @@ export class AudioManager {
     const t = this.ctx.currentTime;
     const day = 1 - c.night;
     const swell = 0.65 + 0.35 * Math.sin(this.time * 0.45) + 0.1 * Math.sin(this.time * 1.13);
-    this.waves.gain.gain.setTargetAtTime(0.22 * c.coast * swell + 0.02, t, 0.3);
-    this.wind.gain.gain.setTargetAtTime((0.025 + 0.09 * c.altitude) * (0.7 + 0.3 * Math.sin(this.time * 0.23)), t, 0.5);
+    const open = 1 - (c.cave ?? 0); // mağarada dalga ve rüzgâr duyulmaz
+    this.waves.gain.gain.setTargetAtTime((0.22 * c.coast * swell + 0.02) * open, t, 0.3);
+    this.wind.gain.gain.setTargetAtTime((0.025 + 0.09 * c.altitude) * (0.7 + 0.3 * Math.sin(this.time * 0.23)) * open + (c.cave ?? 0) * 0.012, t, 0.5);
     this.cricketBus.gain.setTargetAtTime(0.022 * c.night * (0.4 + c.forest * 0.6), t, 0.8);
 
     if (c.night > 0.3 && this.time > this.nextCricket) {
@@ -335,10 +407,20 @@ export class AudioManager {
       }
     }
 
-    if (day > 0.5 && this.time > this.nextBird) {
+    if (day > 0.5 && !c.cave && this.time > this.nextBird) {
       this.nextBird = this.time + 2 + Math.random() * 6;
       const v = (0.3 + c.forest * 0.7) * day * (1 - c.altitude * 0.7);
       if (v > 0.1) this.bird(v);
+    }
+
+    // mağara: yankılı su damlaları ve derinden gelen uğultu
+    if (c.cave > 0 && this.time > this.nextDrip) {
+      this.nextDrip = this.time + 0.6 + Math.random() * 2.2;
+      const f = 900 + Math.random() * 1400;
+      const pan = Math.random() * 1.4 - 0.7;
+      this.tone({ freq: f, freqEnd: f * 1.6, dur: 0.08, vol: 0.05, bus: this.amb, pan });
+      this.tone({ freq: f * 0.98, freqEnd: f * 1.5, dur: 0.08, vol: 0.02, delay: 0.32, bus: this.amb, pan: -pan });
+      if (Math.random() < 0.12) this.noise({ dur: 2.2, vol: 0.05, type: 'lowpass', freq: 160, attack: 0.6, bus: this.amb });
     }
 
     if (c.nearFire > 0 && this.time > this.nextCrackle) {

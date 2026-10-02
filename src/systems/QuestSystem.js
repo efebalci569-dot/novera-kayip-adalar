@@ -1,4 +1,6 @@
 import { QUESTS, FIRST_QUEST } from '../data/quests.js';
+import { ITEMS } from '../data/items.js';
+import { RESOURCES } from '../data/resources.js';
 
 /**
  * Görev sistemi. Görevler olaylarla (EventBus) ilerler; hiçbir sistem
@@ -34,6 +36,9 @@ export class QuestSystem {
       this.setValue('regions', () => true, this.game.exploration.discoveredRegions.size);
     });
     bus.on('player:slept', () => inc('sleep', () => true));
+    bus.on('animal:killed', ({ type }) => inc('kill', (o) => !o.animal || o.animal === type));
+    bus.on('animal:butchered', ({ type }) => inc('butcher', (o) => !o.animal || o.animal === type));
+    bus.on('boat:moved', ({ distance }) => inc('sail', () => true, distance));
     bus.on('player:drank', () => inc('drink', () => true));
     bus.on('level:up', ({ level }) => this.setValue('level', () => true, level));
     bus.on('time:newDay', ({ day }) => this.setValue('day', () => true, day));
@@ -84,7 +89,13 @@ export class QuestSystem {
       case 'regions': return g.exploration.discoveredRegions.size;
       case 'level': return g.progression.level;
       case 'day': return g.time.day;
-      case 'craft': return o.item === 'fiber_backpack' && (g.state.upgrades.backpack ?? 0) >= 1 ? 1 : 0;
+      case 'craft': {
+        if (o.item === 'fiber_backpack') return (g.state.upgrades.backpack ?? 0) >= 1 ? 1 : 0;
+        // eşya zaten elindeyse (ör. bıçağı önceden yaptıysan) sayılır; taşıt suya indirildiyse de
+        const have = g.player.inventory.count(o.item);
+        const launched = ITEMS[o.item]?.vehicle ? g.vehicles.boats.filter((b) => b.type === ITEMS[o.item].vehicle).length : 0;
+        return have + launched;
+      }
       default: return 0;
     }
   }
@@ -203,12 +214,21 @@ export class QuestSystem {
       marker ??= quest.marker;
       if (!marker) continue;
       let pos = null;
+      const cave = g.world.landmarks.byId.cave_entrance;
+      const caveTarget = (inCaveTarget) => inCaveTarget && !g.world.inCave && cave;
       if (marker.resource) {
-        const n = g.world.resources.nearestOfType(marker.resource, p.x, p.z, 140);
-        if (n) pos = { x: n.x, y: n.y + 1.2, z: n.z, near: true };
+        if (caveTarget(RESOURCES[marker.resource]?.cave)) pos = { x: cave.interactPoint.x, y: cave.y + 3, z: cave.interactPoint.z };
+        else {
+          const n = g.world.resources.nearestOfType(marker.resource, p.x, p.z, g.world.inCave ? 200 : 140);
+          if (n) pos = { x: n.x, y: n.y + 1.2, z: n.z, near: true };
+        }
+      } else if (marker.animal) {
+        const a = g.world.inCave ? null : g.animals.nearest(marker.animal, p.x, p.z, 260);
+        if (a) pos = { x: a.x, y: a.y + a.def.height + 0.6, z: a.z, near: true };
       } else if (marker.landmark) {
         const e = g.world.landmarks.byId[marker.landmark];
-        if (e) pos = { x: e.interactPoint.x, y: e.y + 2.5, z: e.interactPoint.z };
+        if (e && caveTarget(e.cave)) pos = { x: cave.interactPoint.x, y: cave.y + 3, z: cave.interactPoint.z };
+        else if (e) pos = { x: e.interactPoint.x, y: e.y + 2.5, z: e.interactPoint.z };
       } else if (marker.landmarks) {
         let best = Infinity;
         for (const lid of marker.landmarks) {

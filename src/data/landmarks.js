@@ -6,6 +6,8 @@
 //   gives          : ilk etkileşimde verilen eşyalar
 //   requires       : etkileşim için gereken eşyalar (tüketilir)
 //   hiddenOnMap    : bayrak açılana kadar haritada gösterilmez
+//   enter          : etkileşim bir alana geçiş yapar ('cave' → mağaraya gir)
+//   cave           : mağaranın içinde bulunur (yükseklik mağara tabanından alınır)
 
 export const LANDMARKS = {
   wreck: {
@@ -31,5 +33,14 @@ export const LANDMARKS = {
   sealed_door: {
     name: 'Mühürlü Kapı', icon: '🚪', discoverRadius: 18,
     action: 'Kapıyı İncele', actionAgain: 'Kapıya Bak', lore: 'sealed_door', requires: { rune_shard: 3 },
+  },
+  cave_entrance: {
+    name: 'Mağara Girişi', icon: '🕳️', discoverRadius: 22,
+    action: 'Mağaraya Gir', actionAgain: 'Mağaraya Gir', enter: 'cave',
+  },
+  miner_camp: {
+    name: 'Madenci Kampı', icon: '⛏️', discoverRadius: 12, cave: true,
+    action: 'Defteri Oku', actionAgain: 'Defteri Tekrar Oku', lore: 'miner_note',
+    gives: { iron_ore: 2, coal: 3, rope: 2 }, keepUsable: true,
   },
 };

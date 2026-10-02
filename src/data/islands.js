@@ -25,9 +25,33 @@ export const ISLANDS = {
       rune_root: { x: -96, z: 40 },
       rune_flame: { x: 62, z: -50 },
       sealed_door: { x: 8, z: -22 },
+      cave_entrance: { x: -74.5, z: -63 },
+      miner_camp: { x: -14, z: -53, cave: true },
     },
     // Araziyi belirli bir noktanın yüksekliğinde düzleştiren alanlar (ör. kapının önündeki teras)
-    flatten: [{ x: 8, z: -15, r: 7, falloff: 15, heightAt: { x: 8, z: -21 } }],
+    flatten: [
+      { x: 8, z: -15, r: 7, falloff: 15, heightAt: { x: 8, z: -21 } },
+      { x: -76.5, z: -63, r: 5.5, falloff: 8, heightAt: { x: -76, z: -63 } }, // mağara girişi ve önü
+    ],
+    // Mağara: dağın altında, yüzeyden ayrı kapalı bir alan. Odalar (daire) ve tüneller (kapsül) birleşimi.
+    // Konumlar haritada dağın altına denk gelecek şekilde seçildi; derinlik `baseY`.
+    cave: {
+      baseY: -60,
+      entrance: { x: -74.5, z: -63, yaw: -Math.PI / 2 }, // yüzeydeki giriş (batıya bakar)
+      spawn: { x: -64, z: -63 }, // içeri girince belirilen nokta
+      exit: { x: -68.5, z: -63 }, // dışarı çıkış (ışık huzmesi)
+      chambers: [
+        { id: 'entry', x: -63, z: -63, r: 7.5, h: 6 },
+        { id: 'hall', x: -38, z: -72, r: 13, h: 11 },
+        { id: 'deep', x: -14, z: -56, r: 11, h: 8.5 },
+        { id: 'grotto', x: -35, z: -96, r: 7.5, h: 5.5 },
+      ],
+      tunnels: [
+        { from: [-60, -64], to: [-47, -70], r: 2.8, h: 4.4 },
+        { from: [-30, -66], to: [-21, -59], r: 2.9, h: 4.6 },
+        { from: [-37, -82], to: [-35, -90], r: 2.5, h: 4.0 },
+      ],
+    },
   },
 };
 

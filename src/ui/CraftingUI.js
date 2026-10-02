@@ -58,9 +58,9 @@ export class CraftingUI extends Panel {
             class: `recipe ${cls} ${this.selected === r ? 'active' : ''}`,
             onclick: () => { this.selected = r; g.audio.play('click'); this.render(); },
           },
-          h('div', { class: 'r-icon' }, st.locked ? '🔒' : c.resultIcon(r)),
+          h('div', { class: 'r-icon' }, st.locked && !r.unlock?.level ? '🔒' : c.resultIcon(r)),
           h('div', {},
-            h('div', { class: 'r-name' }, st.locked ? '???' : c.resultName(r)),
+            h('div', { class: 'r-name' }, st.locked && !r.unlock?.level ? '???' : `${st.locked ? '🔒 ' : ''}${c.resultName(r)}`),
             h('div', { class: 'r-sub' }, st.ok ? 'Üretilebilir' : st.reason),
           ));
         })
@@ -77,6 +77,15 @@ export class CraftingUI extends Panel {
     if (!r) return h('div', { class: 'details' }, h('div', { class: 'empty' }, 'Bir tarif seç.'));
     const st = c.check(r);
     if (st.locked) {
+      if (r.unlock?.level) {
+        return h('div', { class: 'details' },
+          h('div', { class: 'd-head' }, h('div', { class: 'd-icon' }, c.resultIcon(r)), h('div', {}, h('div', { class: 'd-name' }, c.resultName(r)), h('div', { class: 'd-rarity' }, `🔒 Seviye ${r.unlock.level} gerekli`))),
+          h('div', { class: 'd-desc' }, r.desc ?? ITEMS[r.result]?.desc ?? ''),
+          h('div', { class: 'section-title', style: { marginTop: '4px' } }, 'Malzemeler'),
+          h('div', { class: 'ingredients' }, Object.entries(r.ingredients).map(([id, n]) => h('div', { class: 'ing' }, h('span', {}, `${ITEMS[id].icon} ${ITEMS[id].name}`), h('b', {}, `${n}`)))),
+          r.station ? h('div', { class: 'station-row no' }, `${STATIONS[r.station].icon} ${STATIONS[r.station].name} gerekli`) : null,
+        );
+      }
       return h('div', { class: 'details' },
         h('div', { class: 'd-head' }, h('div', { class: 'd-icon' }, '🔒'), h('div', {}, h('div', { class: 'd-name' }, 'Kilitli Tarif'))),
         h('div', { class: 'd-desc' }, `${st.reason}. Görevleri tamamlayarak ve seviye atlayarak yeni tarifler açılır.`),

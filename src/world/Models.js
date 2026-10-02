@@ -73,7 +73,7 @@ export function merge(parts) {
 function beam(a, b, r0, r1, color, radial = 6, opts = {}) {
   const dir = new THREE.Vector3().subVectors(b, a);
   const len = dir.length();
-  const g = new THREE.CylinderGeometry(r1, r0, len, radial, 1);
+  const g = new THREE.CylinderGeometry(r1, r0, len, radial, 1, !!opts.open);
   g.translate(0, len / 2, 0);
   const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
   g.applyQuaternion(q);
@@ -244,7 +244,69 @@ function oak(rng, seed, lod = false) {
     const a = rng() * Math.PI * 2;
     leaf(new THREE.Vector3(p2.x + Math.cos(a) * 1.4, trunkH + randRange(rng, 1.6, 3.4), Math.sin(a) * 1.4), randRange(rng, 1.3, 1.8), 10 + i);
   }
+  // sarmaşıklar: gövdeye sarılan ve dallardan sarkan (ayrı rng → LOD boyutları değişmez)
+  if (!lod) {
+    const vr = mulberry32(seed * 3 + 11);
+    if (vr() < 0.75) parts.push(...trunkVines(vr, seed, p0, p2, 0.5, trunkH));
+    const hang = 2 + Math.floor(vr() * 4);
+    for (let i = 0; i < hang; i++) {
+      const a = vr() * Math.PI * 2;
+      const r = randRange(vr, 1.2, 2.4);
+      const top = new THREE.Vector3(p2.x + Math.cos(a) * r, trunkH + randRange(vr, 0.6, 1.3), Math.sin(a) * r);
+      parts.push(...hangingVine(vr, seed + 200 + i * 7, top, randRange(vr, 2.2, trunkH - 0.2)));
+    }
+  }
   return merge(parts);
+}
+
+// ── Sarmaşık parçaları ─────────────────────────────────────
+const VINE_GREENS = ['#3f7d2c', '#4b8f34', '#2f6a25', '#5a9c3c'];
+
+/** Yukarıdan aşağı sarkan, hafif kıvrımlı bir sarmaşık dalı ve üzerindeki yapraklar. */
+export function hangingVine(rng, seed, top, length) {
+  const parts = [];
+  const segs = Math.max(3, Math.round(length / 0.7));
+  let prev = top.clone();
+  const sway = new THREE.Vector3(randRange(rng, -0.25, 0.25), 0, randRange(rng, -0.25, 0.25));
+  for (let i = 1; i <= segs; i++) {
+    const t = i / segs;
+    const next = new THREE.Vector3(
+      top.x + sway.x * Math.sin(t * 3.1) + randRange(rng, -0.06, 0.06),
+      top.y - t * length,
+      top.z + sway.z * Math.sin(t * 2.7) + randRange(rng, -0.06, 0.06),
+    );
+    parts.push(beam(prev, next, 0.035, 0.03, '#4a6b2a', 3, { seed: seed + i, open: true }));
+    const leafG = new THREE.OctahedronGeometry(randRange(rng, 0.12, 0.18), 0);
+    parts.push(part(leafG, VINE_GREENS[i % VINE_GREENS.length], {
+      x: next.x + randRange(rng, -0.1, 0.1), y: next.y + 0.1, z: next.z + randRange(rng, -0.1, 0.1), sy: 0.55, ry: rng() * 3, seed: seed + 40 + i,
+    }));
+    prev = next;
+  }
+  return parts;
+}
+
+/** Gövdeye sarmal şekilde dolanan sarmaşık. */
+function trunkVines(rng, seed, base, topPt, radius, height) {
+  const parts = [];
+  const turns = randRange(rng, 1.4, 2.4);
+  const steps = 14;
+  const phase = rng() * Math.PI * 2;
+  let prev = null;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const a = phase + t * turns * Math.PI * 2;
+    const r = radius * (1 - t * 0.35) + 0.04;
+    const cx = base.x + (topPt.x - base.x) * t;
+    const p = new THREE.Vector3(cx + Math.cos(a) * r, base.y + 0.2 + t * height * 0.92, Math.sin(a) * r);
+    if (prev) parts.push(beam(prev, p, 0.04, 0.035, '#46672a', 3, { seed: seed + 300 + i, open: true }));
+    if (i % 2 === 0) {
+      parts.push(part(new THREE.OctahedronGeometry(randRange(rng, 0.13, 0.21), 0), VINE_GREENS[i % 4], {
+        x: p.x + Math.cos(a) * 0.08, y: p.y, z: p.z + Math.sin(a) * 0.08, sy: 0.6, ry: rng() * 3, seed: seed + 330 + i,
+      }));
+    }
+    prev = p;
+  }
+  return parts;
 }
 
 function pine(rng, seed, lod = false) {
@@ -373,7 +435,101 @@ function fishSpot(rng, seed) {
   return merge(parts);
 }
 
-const RESOURCE_BUILDERS = { palm, oak, pine, rock, pebble, stick, fiberBush, berryBush, coconut: coconutModel, fishSpot };
+/** Kurumuş, kırık bir gövdeye dolanmış sarmaşık yumağı (toplanabilir). */
+function vineTangle(rng, seed) {
+  const parts = [];
+  const h = randRange(rng, 1.5, 2.1);
+  const lean = randRange(rng, -0.15, 0.15);
+  const base = new THREE.Vector3(0, -0.1, 0);
+  const top = new THREE.Vector3(lean, h, randRange(rng, -0.1, 0.1));
+  parts.push(beam(base, top, 0.22, 0.14, '#6b5640', 6, { seed, shade: 0.08 }));
+  // kırık tepe
+  parts.push(part(new THREE.ConeGeometry(0.14, 0.3, 5), '#7a6550', { x: top.x, y: top.y + 0.12, z: top.z, rz: 0.3, seed: seed + 1 }));
+  parts.push(...trunkVines(rng, seed, base, top, 0.24, h));
+  parts.push(...trunkVines(rng, seed + 50, base, top, 0.26, h * 0.8));
+  // tepeden sarkan ve yere yayılan dallar
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + rng();
+    const t = new THREE.Vector3(top.x + Math.cos(a) * 0.25, top.y - 0.1, top.z + Math.sin(a) * 0.25);
+    parts.push(...hangingVine(rng, seed + 100 + i * 9, t, randRange(rng, 0.9, h - 0.2)));
+  }
+  for (let i = 0; i < 6; i++) {
+    const a = rng() * Math.PI * 2;
+    const len = randRange(rng, 0.7, 1.4);
+    const end = new THREE.Vector3(Math.cos(a) * len, 0.04, Math.sin(a) * len);
+    parts.push(beam(new THREE.Vector3(0, 0.08, 0), end, 0.035, 0.025, '#4a6b2a', 3, { seed: seed + 200 + i }));
+    parts.push(part(new THREE.IcosahedronGeometry(0.17, 0), VINE_GREENS[i % 4], { x: end.x, y: 0.1, z: end.z, sy: 0.5, seed: seed + 220 + i }));
+    parts.push(part(new THREE.IcosahedronGeometry(0.13, 0), VINE_GREENS[(i + 1) % 4], { x: end.x * 0.55, y: 0.1, z: end.z * 0.55, sy: 0.5, seed: seed + 240 + i }));
+  }
+  return merge(parts);
+}
+
+/** Mağara kayası + içine gömülü cevher parçaları. */
+function oreRock(rng, seed, base, veins, veinColors, veinSize = 0.22) {
+  const parts = [];
+  parts.push(part(new THREE.IcosahedronGeometry(1, 1), base, {
+    y: 0.55, sx: 1.3, sy: 0.95, sz: 1.1, ry: rng() * 3, jitter: 0.18, seed, shade: 0.1,
+  }));
+  parts.push(part(new THREE.DodecahedronGeometry(0.5, 0), base, { x: 0.95, y: 0.2, z: 0.4, jitter: 0.08, seed: seed + 1, shade: 0.1 }));
+  for (let i = 0; i < veins; i++) {
+    const a = rng() * Math.PI * 2;
+    const el = randRange(rng, -0.1, 0.9);
+    const r = 1.05;
+    parts.push(part(new THREE.DodecahedronGeometry(randRange(rng, veinSize * 0.7, veinSize * 1.3), 0), veinColors[i % veinColors.length], {
+      x: Math.cos(a) * Math.cos(el) * r * 1.2, y: 0.55 + Math.sin(el) * r * 0.85, z: Math.sin(a) * Math.cos(el) * r, ry: rng() * 3, seed: seed + 10 + i,
+    }));
+  }
+  return merge(parts);
+}
+
+function coalOre(rng, seed) {
+  return oreRock(rng, seed, '#5f5b57', 9, ['#1e1e22', '#2a2a2f', '#141416']);
+}
+
+function ironOre(rng, seed) {
+  return oreRock(rng, seed, '#6c625a', 8, ['#b0612c', '#c97a3a', '#8a4a26', '#d99a62'], 0.2);
+}
+
+/** Parlayan kristal kümesi (ışıksız malzemeyle çizilir; renkler kendi parlaklığıdır). */
+function crystal(rng, seed) {
+  const parts = [];
+  parts.push(part(new THREE.DodecahedronGeometry(0.55, 0), '#2a3140', { y: 0.15, sy: 0.55, jitter: 0.06, seed, shade: 0.1 }));
+  const n = 6 + Math.floor(rng() * 4);
+  const cols = ['#7ff3ff', '#5fd0ff', '#b6fbff', '#86b8ff'];
+  for (let i = 0; i < n; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = i === 0 ? 0 : randRange(rng, 0.15, 0.5);
+    const len = i === 0 ? randRange(rng, 1.3, 1.7) : randRange(rng, 0.5, 1.1);
+    const g = new THREE.OctahedronGeometry(0.5, 0);
+    g.scale(0.26, len, 0.26);
+    g.translate(0, len * 0.45, 0);
+    const p = part(g, cols[i % cols.length], {
+      x: Math.cos(a) * d, y: 0.1, z: Math.sin(a) * d, rx: Math.sin(a) * d * 0.9, rz: -Math.cos(a) * d * 0.9, ry: rng() * 3, seed: seed + i, shade: 0.12,
+    });
+    parts.push(heightShade(p, 0, 1.6, 0.55, 1.15));
+  }
+  return merge(parts);
+}
+
+function caveMushroom(rng, seed) {
+  const parts = [];
+  const n = 4 + Math.floor(rng() * 3);
+  for (let i = 0; i < n; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = i === 0 ? 0 : randRange(rng, 0.15, 0.45);
+    const h = randRange(rng, 0.2, 0.55);
+    const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    parts.push(part(new THREE.CylinderGeometry(0.03, 0.045, h, 5), '#b9d6d2', { x, y: h / 2, z, seed: seed + i }));
+    const cap = new THREE.SphereGeometry(0.09 + h * 0.28, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2);
+    parts.push(part(cap, i % 2 ? '#4ef2d0' : '#6ad8ff', { x, y: h - 0.01, z, sy: 0.6, seed: seed + 10 + i }));
+  }
+  return merge(parts);
+}
+
+const RESOURCE_BUILDERS = {
+  palm, oak, pine, rock, pebble, stick, fiberBush, berryBush, coconut: coconutModel, fishSpot,
+  vineTangle, coalOre, ironOre, crystal, caveMushroom,
+};
 
 /** Kaynak türü için `variants` farklı geometri üretir (lod: uzak mesafe sürümü). */
 export function buildResourceGeometries(modelKey, variants = 1, lod = false) {
@@ -608,9 +764,288 @@ function hut() {
   roof.rotateX(-Math.PI / 2);
   parts.push(part(roof, '#c9a55a', { y: 2.5 + 0.5 * 1.05, sx: 2.55, sy: 1.05, seed: 480, shade: 0.07 }));
   parts.push(beam(new THREE.Vector3(0, 3.58, -2.2), new THREE.Vector3(0, 3.58, 2.2), 0.09, 0.09, '#6b4c30', 6, { seed: 481 }));
-  // saz yatak + yastık
-  parts.push(part(new THREE.BoxGeometry(1.1, 0.22, 2.0), '#d8c27a', { x: -0.85, y: 0.41, z: -0.4, seed: 490, shade: 0.06 }));
-  parts.push(part(new THREE.BoxGeometry(0.7, 0.14, 0.4), '#efe2b8', { x: -0.85, y: 0.58, z: -1.15, seed: 491 }));
+  // yatak artık ayrı bir yapı (bkz. bed) — içerisi boş, yere hasır serili
+  parts.push(part(new THREE.BoxGeometry(1.6, 0.03, 1.2), '#c9b071', { x: 0.4, y: 0.315, z: -0.6, seed: 492, shade: 0.08 }));
+  return merge(parts);
+}
+
+function bed() {
+  const parts = [];
+  const wood = '#7a5636';
+  // çerçeve + ayaklar
+  parts.push(part(new THREE.BoxGeometry(1.12, 0.22, 2.05), wood, { y: 0.2, seed: 1500, shade: 0.05 }));
+  for (const [x, z] of [[-0.5, -0.95], [0.5, -0.95], [-0.5, 0.95], [0.5, 0.95]]) {
+    parts.push(part(new THREE.BoxGeometry(0.12, 0.2, 0.12), '#5f4430', { x, y: 0.05, z, seed: 1501 }));
+  }
+  // başlık
+  parts.push(part(new THREE.BoxGeometry(1.16, 0.7, 0.1), '#6b4c30', { y: 0.45, z: -1.02, seed: 1502, shade: 0.05 }));
+  parts.push(part(new THREE.BoxGeometry(1.24, 0.08, 0.14), '#8a6440', { y: 0.82, z: -1.02, seed: 1503 }));
+  // saman şilte
+  parts.push(part(new THREE.BoxGeometry(1.0, 0.16, 1.9), '#d8c27a', { y: 0.38, seed: 1504, shade: 0.05 }));
+  // yün battaniye (kıvrık üst kenarlı) ve yastık
+  parts.push(part(new THREE.BoxGeometry(1.06, 0.08, 1.25), '#b0524a', { y: 0.49, z: 0.3, seed: 1505, shade: 0.04 }));
+  parts.push(part(new THREE.BoxGeometry(1.08, 0.1, 0.18), '#d9d2c2', { y: 0.52, z: -0.3, seed: 1506 }));
+  for (let i = 0; i < 3; i++) parts.push(part(new THREE.BoxGeometry(1.07, 0.085, 0.06), '#e8dfc8', { y: 0.495, z: 0.05 + i * 0.4, seed: 1507 + i }));
+  for (const side of [-1, 1]) parts.push(part(new THREE.BoxGeometry(0.06, 0.32, 1.25), '#a14a43', { x: side * 0.53, y: 0.36, z: 0.3, seed: 1510 }));
+  parts.push(part(new THREE.BoxGeometry(0.62, 0.13, 0.34), '#f3ecda', { y: 0.53, z: -0.72, seed: 1511, jitter: 0.015 }));
+  return merge(parts);
+}
+
+/** Dört direk üzerinde saz çatı. */
+function gazebo() {
+  const parts = [];
+  for (const [x, z] of [[-1.45, -1.45], [1.45, -1.45], [-1.45, 1.45], [1.45, 1.45]]) {
+    parts.push(beam(new THREE.Vector3(x, -0.4, z), new THREE.Vector3(x * 0.98, 2.55, z * 0.98), 0.13, 0.11, '#6f5035', 6, { seed: 1520 }));
+  }
+  for (const side of [-1, 1]) {
+    parts.push(part(new THREE.BoxGeometry(3.2, 0.14, 0.14), '#5f4430', { y: 2.5, z: side * 1.45, seed: 1521 }));
+    parts.push(part(new THREE.BoxGeometry(0.14, 0.14, 3.2), '#5f4430', { x: side * 1.45, y: 2.5, seed: 1522 }));
+  }
+  const roof = new THREE.ConeGeometry(2.75, 1.55, 4, 1, true);
+  roof.rotateY(Math.PI / 4);
+  parts.push(part(roof, '#c9a55a', { y: 3.3, seed: 1523, shade: 0.08, jitter: 0.05 }));
+  const under = new THREE.ConeGeometry(2.7, 1.5, 4, 1, true);
+  under.rotateY(Math.PI / 4);
+  under.scale(1, 1, 1);
+  const ug = under.toNonIndexed();
+  // alt yüz (içeriden bakınca çatı görünsün)
+  const pos = ug.attributes.position;
+  for (let i = 0; i < pos.count; i += 3) {
+    const ax = pos.getX(i), ay = pos.getY(i), az = pos.getZ(i);
+    pos.setXYZ(i, pos.getX(i + 2), pos.getY(i + 2), pos.getZ(i + 2));
+    pos.setXYZ(i + 2, ax, ay, az);
+  }
+  parts.push(part(ug, '#a8853f', { y: 3.27, seed: 1524, shade: 0.06 }));
+  parts.push(part(new THREE.ConeGeometry(0.22, 0.5, 4), '#8d6a32', { y: 4.25, seed: 1525 }));
+  // saçak püskülleri
+  for (let i = 0; i < 16; i++) {
+    const side = Math.floor(i / 4);
+    const t = ((i % 4) + 0.5) / 4 * 3.6 - 1.8;
+    const [x, z] = [[t, -1.9], [1.9, t], [t, 1.9], [-1.9, t]][side];
+    parts.push(part(new THREE.ConeGeometry(0.12, 0.45, 3), '#b8954c', { x, y: 2.42, z, rx: Math.PI, seed: 1530 + i }));
+  }
+  return merge(parts);
+}
+
+/** Verandalı kütük kulübe (kapı önde, iki yanda pencere). */
+function cabin() {
+  const parts = [];
+  const logCols = ['#8a6440', '#7d5a39', '#94704a'];
+  // taban, veranda, basamak, kazıklar
+  parts.push(part(new THREE.BoxGeometry(5.3, 0.35, 5.1), '#8b6a45', { y: 0.175, seed: 1600, shade: 0.05 }));
+  for (let i = 0; i < 6; i++) parts.push(part(new THREE.BoxGeometry(0.86, 0.05, 1.1), i % 2 ? '#9a7650' : '#8e6c47', { x: -2.2 + i * 0.88, y: 0.3, z: 3.0, seed: 1601 + i }));
+  parts.push(part(new THREE.BoxGeometry(5.3, 0.25, 1.1), '#7a5a38', { y: 0.15, z: 3.0, seed: 1608 }));
+  parts.push(part(new THREE.BoxGeometry(1.6, 0.6, 0.5), '#6f5133', { y: -0.45, z: 3.75, seed: 1609 }));
+  for (const [x, z] of [[-2.5, -2.4], [2.5, -2.4], [-2.5, 2.4], [2.5, 2.4], [-2.5, 3.45], [2.5, 3.45]]) {
+    parts.push(part(new THREE.CylinderGeometry(0.13, 0.15, 2.6, 6), '#5f4630', { x, y: -1.15, z, seed: 1610 }));
+  }
+  // kütük duvarlar: 8 sıra
+  const rows = 8;
+  const rowH = 0.29;
+  const logX = (x0, x1, y, z, seed) => {
+    const len = x1 - x0;
+    const g = new THREE.CylinderGeometry(0.15, 0.15, len, 7);
+    g.rotateZ(Math.PI / 2);
+    parts.push(part(g, logCols[seed % 3], { x: (x0 + x1) / 2, y, z, seed, shade: 0.05 }));
+  };
+  const logZ = (z0, z1, y, x, seed) => {
+    const len = z1 - z0;
+    const g = new THREE.CylinderGeometry(0.15, 0.15, len, 7);
+    g.rotateX(Math.PI / 2);
+    parts.push(part(g, logCols[seed % 3], { x, y, z: (z0 + z1) / 2, seed, shade: 0.05 }));
+  };
+  for (let r = 0; r < rows; r++) {
+    const y = 0.5 + r * rowH;
+    const window = r >= 3 && r <= 5;
+    // arka duvar (pencereli)
+    if (window) {
+      logX(-2.6, -0.6, y, -2.35, 1620 + r);
+      logX(0.6, 2.6, y, -2.35, 1640 + r);
+    } else logX(-2.6, 2.6, y, -2.35, 1620 + r);
+    // ön duvar (kapı boşluğu)
+    if (r < 7) {
+      logX(-2.6, -0.65, y, 2.35, 1660 + r);
+      logX(0.65, 2.6, y, 2.35, 1680 + r);
+    } else logX(-2.6, 2.6, y, 2.35, 1660 + r);
+    // yan duvarlar (pencereli)
+    for (const side of [-1, 1]) {
+      if (window) {
+        logZ(-2.45, -0.6, y + 0.14, side * 2.45, 1700 + r + side * 20);
+        logZ(0.6, 2.45, y + 0.14, side * 2.45, 1740 + r + side * 20);
+      } else logZ(-2.45, 2.45, y + 0.14, side * 2.45, 1700 + r + side * 20);
+    }
+  }
+  // duvar üstü kirişleri (çatı ile duvar arasında boşluk kalmasın)
+  for (const side of [-1, 1]) {
+    parts.push(part(new THREE.BoxGeometry(0.32, 0.62, 5.1), '#6f5035', { x: side * 2.45, y: 2.95, seed: 1776, shade: 0.04 }));
+    parts.push(part(new THREE.BoxGeometry(5.2, 0.36, 0.32), '#6f5035', { y: 2.84, z: side * 2.35, seed: 1777, shade: 0.04 }));
+  }
+  // pencere ve kapı kasaları
+  for (const side of [-1, 1]) {
+    parts.push(part(new THREE.BoxGeometry(0.2, 1.0, 1.3), '#6b4c30', { x: side * 2.45, y: 1.6, seed: 1780, sx: 1 }));
+    parts.push(part(new THREE.BoxGeometry(0.06, 0.92, 1.18), '#9fd1e0', { x: side * 2.48, y: 1.6, seed: 1781 }));
+  }
+  parts.push(part(new THREE.BoxGeometry(1.3, 1.0, 0.2), '#6b4c30', { y: 1.6, z: -2.35, seed: 1782 }));
+  parts.push(part(new THREE.BoxGeometry(1.18, 0.92, 0.06), '#9fd1e0', { y: 1.6, z: -2.38, seed: 1783 }));
+  parts.push(part(new THREE.BoxGeometry(1.5, 0.2, 0.25), '#5f4430', { y: 2.5, z: 2.35, seed: 1784 }));
+  // beşik çatı (sırt z ekseni boyunca) + veranda üstü
+  const slope = 0.62;
+  const roofW = 3.35;
+  for (const side of [-1, 1]) {
+    const g = new THREE.BoxGeometry(roofW, 0.14, 6.9);
+    parts.push(part(g, '#7b4a32', {
+      x: side * Math.cos(slope) * roofW / 2 * 0.98, y: 2.95 + Math.sin(slope) * roofW / 2, z: 0.55, rz: -side * slope, seed: 1790 + side, shade: 0.05,
+    }));
+    // kiremit çizgileri
+    for (let k = 0; k < 4; k++) {
+      const d = (k + 0.5) / 4 * roofW;
+      parts.push(part(new THREE.BoxGeometry(0.06, 0.05, 6.95), '#5e3626', {
+        x: side * Math.cos(slope) * d, y: 2.95 + Math.sin(slope) * d + 0.09, z: 0.55, rz: -side * slope, seed: 1795 + k,
+      }));
+    }
+  }
+  // üçgen alınlıklar
+  const gable = new THREE.CylinderGeometry(1, 1, 0.16, 3, 1);
+  gable.rotateX(Math.PI / 2);
+  gable.rotateZ(Math.PI / 2);
+  for (const z of [-2.35, 2.35]) {
+    parts.push(part(gable.clone(), '#8a6440', { y: 2.95 + 0.62, z, sx: 2.6 * 1.15, sy: 1.25, seed: 1800, shade: 0.05 }));
+  }
+  // veranda direkleri
+  for (const x of [-2.5, 2.5]) parts.push(beam(new THREE.Vector3(x, 0.3, 3.45), new THREE.Vector3(x, 2.95, 3.45), 0.1, 0.09, '#6f5035', 6, { seed: 1810 }));
+  parts.push(part(new THREE.BoxGeometry(5.3, 0.12, 0.12), '#5f4430', { y: 2.9, z: 3.45, seed: 1811 }));
+  // baca
+  parts.push(part(new THREE.BoxGeometry(0.55, 1.6, 0.55), '#7d786f', { x: 1.5, y: 4.0, z: -1.4, seed: 1812, jitter: 0.03, shade: 0.08 }));
+  return merge(parts);
+}
+
+/** Taş duvarlı, kiremit çatılı, bacalı ev. */
+function stoneHouse() {
+  const parts = [];
+  const stones = ['#8c877e', '#7b776f', '#99938a', '#857f76'];
+  parts.push(part(new THREE.BoxGeometry(6.4, 0.45, 5.9), '#6f6a62', { y: 0.18, seed: 1900, shade: 0.06 }));
+  for (let i = 0; i < 7; i++) parts.push(part(new THREE.BoxGeometry(0.8, 0.04, 5.0), i % 2 ? '#9a7650' : '#8e6c47', { x: -2.4 + i * 0.8, y: 0.42, seed: 1901 + i }));
+  parts.push(part(new THREE.BoxGeometry(1.8, 0.5, 0.6), '#77736b', { y: -0.2, z: 3.15, seed: 1909 }));
+  for (const [x, z] of [[-3.1, -2.8], [3.1, -2.8], [-3.1, 2.8], [3.1, 2.8]]) {
+    parts.push(part(new THREE.BoxGeometry(0.7, 2.8, 0.7), '#77736b', { x, y: -1.2, z, seed: 1910, jitter: 0.05 }));
+  }
+  // taş bloklar
+  const rng = mulberry32(1920);
+  const block = (x, y, z, w, d, seed) => parts.push(part(new THREE.BoxGeometry(w, 0.52, d), stones[seed % 4], { x, y, z, seed, jitter: 0.03, shade: 0.07 }));
+  const rows = 6;
+  for (let r = 0; r < rows; r++) {
+    const y = 0.7 + r * 0.53;
+    const off = r % 2 ? 0.45 : 0;
+    const window = r === 2 || r === 3;
+    // ön ve arka
+    for (const zSide of [-1, 1]) {
+      for (let x = -3.1 + off; x < 3.1; x += 0.9) {
+        const w = Math.min(0.88, 3.1 - x);
+        const cx = x + w / 2;
+        if (zSide === 1 && Math.abs(cx) < 0.75 && r < 4) continue; // kapı
+        if (zSide === -1 && window && Math.abs(cx) < 0.7) continue; // arka pencere
+        block(cx, y, zSide * 2.55, w, 0.58, 1930 + r * 20 + Math.round(x * 3) + (zSide > 0 ? 7 : 0));
+      }
+    }
+    // yanlar
+    for (const xSide of [-1, 1]) {
+      for (let z = -2.25 + off; z < 2.25; z += 0.9) {
+        const d = Math.min(0.88, 2.25 - z);
+        const cz = z + d / 2;
+        if (window && Math.abs(cz) < 0.7) continue;
+        block(xSide * 2.85, y, cz, 0.58, d, 2100 + r * 20 + Math.round(z * 3) + (xSide > 0 ? 9 : 0));
+      }
+    }
+  }
+  void rng;
+  // kapı lentosu, pencere kasaları
+  parts.push(part(new THREE.BoxGeometry(2.0, 0.3, 0.7), '#6e6a72', { y: 2.75, z: 2.55, seed: 2300 }));
+  for (const xSide of [-1, 1]) {
+    parts.push(part(new THREE.BoxGeometry(0.62, 1.2, 1.5), '#5f4430', { x: xSide * 2.85, y: 2.0, seed: 2301 }));
+    parts.push(part(new THREE.BoxGeometry(0.66, 1.0, 1.3), '#9fd1e0', { x: xSide * 2.85, y: 2.0, seed: 2302 }));
+  }
+  parts.push(part(new THREE.BoxGeometry(1.5, 1.2, 0.62), '#5f4430', { y: 2.0, z: -2.55, seed: 2303 }));
+  parts.push(part(new THREE.BoxGeometry(1.3, 1.0, 0.66), '#9fd1e0', { y: 2.0, z: -2.55, seed: 2304 }));
+  // kırma kiremit çatı
+  const roof = new THREE.ConeGeometry(1, 1, 4, 1);
+  roof.rotateY(Math.PI / 4);
+  parts.push(part(roof, '#8a4a3a', { y: 3.95 + 1.1, sx: 5.1, sy: 2.2, sz: 4.7, seed: 2310, shade: 0.06 }));
+  parts.push(part(new THREE.BoxGeometry(6.8, 0.18, 6.2), '#6e3a2e', { y: 3.92, seed: 2311 }));
+  // baca
+  parts.push(part(new THREE.BoxGeometry(0.75, 2.6, 0.75), '#7d786f', { x: -1.9, y: 4.9, z: -1.5, seed: 2312, jitter: 0.04, shade: 0.08 }));
+  parts.push(part(new THREE.BoxGeometry(0.9, 0.18, 0.9), '#6e6a72', { x: -1.9, y: 6.25, z: -1.5, seed: 2313 }));
+  return merge(parts);
+}
+
+/** Kristal fener: taş kaide, ahşap direk, tepede kafes (kristal ayrı, parlayan malzemeyle çizilir). */
+function crystalLamp() {
+  const parts = [];
+  parts.push(part(new THREE.CylinderGeometry(0.3, 0.36, 0.25, 7), '#7d786f', { y: 0.12, seed: 2400, jitter: 0.02 }));
+  parts.push(part(new THREE.CylinderGeometry(0.06, 0.08, 1.3, 6), '#6b4c30', { y: 0.85, seed: 2401 }));
+  parts.push(part(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 6), '#5f4430', { y: 1.5, seed: 2402 }));
+  parts.push(part(new THREE.ConeGeometry(0.26, 0.25, 6), '#5f4430', { y: 1.98, seed: 2403 }));
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    parts.push(part(new THREE.BoxGeometry(0.03, 0.42, 0.03), '#4a3420', { x: Math.cos(a) * 0.17, y: 1.72, z: Math.sin(a) * 0.17, seed: 2404 }));
+  }
+  return merge(parts);
+}
+
+/** Kütüklerden bağlanmış sal. Orijin su hizasında. */
+function raftModel() {
+  const parts = [];
+  const cols = ['#8a6440', '#7d5a39', '#94704a', '#866142'];
+  for (let i = 0; i < 7; i++) {
+    const x = -0.96 + i * 0.32;
+    const g = new THREE.CylinderGeometry(0.165, 0.165, 3.3 + (i % 2) * 0.15, 7);
+    g.rotateX(Math.PI / 2);
+    parts.push(part(g, cols[i % 4], { x, y: 0.02, z: (i % 3) * 0.05, seed: 2500 + i, shade: 0.05 }));
+  }
+  for (const z of [-1.2, 0, 1.2]) {
+    parts.push(part(new THREE.BoxGeometry(2.3, 0.1, 0.18), '#6b4c30', { y: 0.2, z, seed: 2510 }));
+    for (const x of [-0.8, 0.8]) parts.push(part(new THREE.TorusGeometry(0.19, 0.035, 4, 8), '#cdb88a', { x, y: 0.05, z, ry: Math.PI / 2, seed: 2511 }));
+  }
+  // oturak sandık
+  parts.push(part(new THREE.BoxGeometry(0.7, 0.3, 0.5), '#9b7547', { y: 0.38, z: -0.6, seed: 2512, shade: 0.05 }));
+  // yan duran kürek
+  parts.push(beam(new THREE.Vector3(0.75, 0.25, -1.4), new THREE.Vector3(0.82, 0.3, 1.0), 0.03, 0.03, '#7b5a3a', 5, { seed: 2513 }));
+  parts.push(part(new THREE.BoxGeometry(0.2, 0.03, 0.5), '#8a6440', { x: 0.83, y: 0.31, z: 1.2, seed: 2514 }));
+  return merge(parts);
+}
+
+/** Yün yelkenli küçük tekne. Orijin su hizasında, burun +Z. */
+function boatModel() {
+  const parts = [];
+  const g = new THREE.BoxGeometry(1.9, 0.9, 5.0, 2, 2, 8);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const t = (z + 2.5) / 5; // 0 kıç → 1 burun
+    let narrow = t > 0.6 ? 1 - Math.pow((t - 0.6) / 0.4, 1.4) * 0.97 : 1;
+    if (t < 0.12) narrow *= 0.82 + t * 1.5;
+    const keel = y < 0 ? 0.42 : 1;
+    pos.setX(i, x * narrow * keel);
+    if (y > 0) pos.setY(i, y + Math.pow(Math.max(0, t - 0.7) / 0.3, 2) * 0.35);
+  }
+  parts.push(part(g, '#7a5232', { y: 0.05, seed: 2600, shade: 0.05 }));
+  parts.push(part(new THREE.BoxGeometry(1.55, 0.05, 3.6), '#a0784c', { y: 0.33, z: -0.3, seed: 2601 }));
+  // küpeşte şeridi
+  for (const side of [-1, 1]) parts.push(part(new THREE.BoxGeometry(0.08, 0.1, 3.8), '#5e3d24', { x: side * 0.93, y: 0.52, z: -0.4, seed: 2602 }));
+  // oturaklar
+  parts.push(part(new THREE.BoxGeometry(1.6, 0.08, 0.35), '#8a6440', { y: 0.42, z: -1.35, seed: 2603 }));
+  parts.push(part(new THREE.BoxGeometry(1.4, 0.08, 0.35), '#8a6440', { y: 0.42, z: 0.9, seed: 2604 }));
+  // direk, bumba, yelken
+  parts.push(part(new THREE.CylinderGeometry(0.06, 0.08, 4.4, 6), '#6b4c30', { y: 2.5, z: 0.6, seed: 2605 }));
+  parts.push(beam(new THREE.Vector3(0, 1.2, 0.6), new THREE.Vector3(0, 1.3, -1.9), 0.045, 0.04, '#6b4c30', 5, { seed: 2606 }));
+  const sail = new THREE.BufferGeometry();
+  const v = [0, 4.5, 0.62, 0, 1.3, 0.62, 0, 1.36, -1.85];
+  sail.setAttribute('position', new THREE.Float32BufferAttribute([...v, v[0], v[1], v[2], v[6], v[7], v[8], v[3], v[4], v[5]], 3));
+  sail.computeVertexNormals();
+  parts.push(part(sail, '#efe6d0', { x: 0.03, seed: 2607, shade: 0.04 }));
+  parts.push(part(new THREE.BoxGeometry(0.02, 0.5, 0.9), '#c9553f', { x: 0.04, y: 2.4, z: -0.05, seed: 2608 }));
+  // dümen
+  parts.push(part(new THREE.BoxGeometry(0.06, 0.7, 0.4), '#6b4c30', { y: -0.1, z: -2.55, seed: 2609 }));
+  parts.push(beam(new THREE.Vector3(0, 0.25, -2.5), new THREE.Vector3(0, 0.6, -1.7), 0.03, 0.03, '#5e3d24', 5, { seed: 2610 }));
   return merge(parts);
 }
 
@@ -640,7 +1075,25 @@ function workbench() {
   return merge(parts);
 }
 
-const BUILDING_BUILDERS = { campfire, hut, chest, workbench };
+const BUILDING_BUILDERS = {
+  campfire, hut, chest, workbench, bed, gazebo, cabin, stone_house: stoneHouse, crystal_lamp: crystalLamp,
+  raft: raftModel, boat: boatModel,
+};
+
+/** Devrilen ağacın geride bıraktığı kütük (taze kesik yüzeyli). Yarıçap ~1 birim; ağaca göre ölçeklenir. */
+export function buildTreeStumpGeometry() {
+  const parts = [];
+  parts.push(part(new THREE.CylinderGeometry(0.42, 0.5, 0.55, 8), '#6e4f36', { y: 0.12, seed: 2700, shade: 0.08, jitter: 0.02 }));
+  parts.push(part(new THREE.CylinderGeometry(0.4, 0.4, 0.04, 8), '#d0ab73', { y: 0.4, seed: 2701 }));
+  parts.push(part(new THREE.CylinderGeometry(0.24, 0.24, 0.045, 8), '#b88f58', { y: 0.405, seed: 2702 }));
+  parts.push(part(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 6), '#a07a48', { y: 0.41, seed: 2703 }));
+  // kırık kıymıklar
+  for (let i = 0; i < 3; i++) {
+    const a = i * 2.1;
+    parts.push(part(new THREE.ConeGeometry(0.07, 0.22, 3), '#c49c64', { x: Math.cos(a) * 0.3, y: 0.5, z: Math.sin(a) * 0.3, seed: 2704 + i }));
+  }
+  return merge(parts);
+}
 
 export function buildBuildingGeometry(type) {
   const fn = BUILDING_BUILDERS[type];
@@ -684,7 +1137,34 @@ function heldTorch() {
   ]);
 }
 
-const HELD_BUILDERS = { axe: heldAxe, pickaxe: heldPickaxe, spear: heldSpear, torch: heldTorch };
+function heldKnife() {
+  return merge([
+    part(new THREE.CylinderGeometry(0.028, 0.03, 0.16, 5), '#6b4c30', { y: 0.02, seed: 740 }),
+    part(new THREE.CylinderGeometry(0.035, 0.035, 0.04, 5), '#b9c65c', { y: 0.11, seed: 741 }),
+    part(new THREE.BoxGeometry(0.015, 0.22, 0.06), '#a8a39a', { y: 0.24, z: 0.005, seed: 742, jitter: 0.004 }),
+    part(new THREE.ConeGeometry(0.03, 0.07, 3), '#b8b3a8', { y: 0.38, sz: 0.4, seed: 743 }),
+  ]);
+}
+
+function heldRod() {
+  return merge([
+    part(new THREE.CylinderGeometry(0.015, 0.03, 1.6, 5), '#8b6a45', { y: 0.6, seed: 750 }),
+    part(new THREE.TorusGeometry(0.05, 0.015, 4, 8), '#cdb88a', { y: 0.15, ry: Math.PI / 2, seed: 751 }),
+    part(new THREE.BoxGeometry(0.006, 0.9, 0.006), '#efe6d0', { y: 0.95, z: 0.12, rx: 0.3, seed: 752 }),
+    part(new THREE.ConeGeometry(0.03, 0.08, 4), '#e8f0ff', { y: 0.5, z: 0.28, seed: 753 }),
+  ]);
+}
+
+function heldPaddle() {
+  return merge([
+    part(new THREE.CylinderGeometry(0.03, 0.03, 1.5, 5), '#7b5a3a', { y: 0.35, seed: 760 }),
+    part(new THREE.BoxGeometry(0.04, 0.5, 0.2), '#8a6440', { y: 1.25, seed: 761 }),
+  ]);
+}
+
+const HELD_BUILDERS = {
+  axe: heldAxe, pickaxe: heldPickaxe, spear: heldSpear, torch: heldTorch, knife: heldKnife, rod: heldRod, paddle: heldPaddle,
+};
 
 export function buildHeldGeometry(key) {
   return HELD_BUILDERS[key] ? HELD_BUILDERS[key]() : null;
@@ -693,7 +1173,71 @@ export function buildHeldGeometry(key) {
 /** Tüm prosedürel modellerin paylaştığı malzeme. */
 export const sharedMaterials = {
   standard: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+  // ışık almadan kendi renginde parlayan (kristaller, mağara mantarları)
+  glow: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
 };
+
+// ── Rüzgâr ────────────────────────────────────────────────
+// Tüm sallanan bitkiler aynı zaman/şiddet değerini paylaşır (WorldManager günceller).
+export const windUniforms = { uWindTime: { value: 0 }, uWindStrength: { value: 1 } };
+
+/**
+ * Köşe gölgelendiricisine rüzgâr salınımı ekler: yükseklikle artan eğilme (dünya uzayında
+ * ortak rüzgâr yönü) + yeşil köşelerde (yapraklar) hafif titreşim.
+ * height: modelin tepe yüksekliği (yerel birim), amp: tepede salınım (m), flutter: yaprak titreşimi.
+ */
+function injectWind(shader, { height = 10, amp = 0.3, flutter = 0.03 } = {}) {
+  shader.uniforms.uWindTime = windUniforms.uWindTime;
+  shader.uniforms.uWindStrength = windUniforms.uWindStrength;
+  const useColor = flutter > 0;
+  shader.vertexShader = 'uniform float uWindTime;\nuniform float uWindStrength;\n' + shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    `#include <begin_vertex>
+     {
+       vec3 wBase = modelMatrix[3].xyz;
+       #ifdef USE_INSTANCING
+         wBase += instanceMatrix[3].xyz;
+       #endif
+       float wH = clamp(transformed.y / ${height.toFixed(2)}, 0.0, 1.4);
+       float wPh = wBase.x * 0.045 + wBase.z * 0.037;
+       float gust = 0.55 + 0.45 * sin(uWindTime * 0.31 + wBase.x * 0.013 + wBase.z * 0.007);
+       float bend = wH * wH * ${amp.toFixed(3)} * gust * uWindStrength;
+       vec3 windWorld = vec3(sin(uWindTime * 1.25 + wPh) + 0.35, 0.0, sin(uWindTime * 0.95 + wPh * 1.3) * 0.55) * bend;
+       #ifdef USE_INSTANCING
+         mat3 wIm = mat3(instanceMatrix);
+         vec3 windLocal = (transpose(wIm) * windWorld) / max(dot(wIm[0], wIm[0]), 1e-4);
+       #else
+         vec3 windLocal = windWorld;
+       #endif
+       transformed += windLocal;
+       ${useColor ? `
+       #ifdef USE_COLOR
+         float wLeaf = step(color.r * 1.08 + 0.02, color.g);
+         transformed += vec3(
+           sin(uWindTime * 6.1 + transformed.x * 2.7 + wPh * 9.0),
+           sin(uWindTime * 7.3 + transformed.z * 2.3) * 0.6,
+           cos(uWindTime * 5.4 + transformed.y * 2.1 + wPh * 7.0)
+         ) * ${flutter.toFixed(3)} * wLeaf * wH * (0.6 + gust * 0.6) * uWindStrength;
+       #endif` : ''}
+     }`,
+  );
+}
+
+/** Rüzgârda sallanan bitkiler için malzeme (çalılar, eğreltiler, sazlar). */
+export function createWindMaterial(opts) {
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  mat.onBeforeCompile = (shader) => injectWind(shader, opts);
+  mat.customProgramCacheKey = () => `wind-${opts?.height}-${opts?.amp}`;
+  return mat;
+}
+
+/** Gölge geçişinde de salınım (gölgeler ağaçla birlikte sallansın). */
+export function createWindDepthMaterial(opts) {
+  const mat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  mat.onBeforeCompile = (shader) => injectWind(shader, { ...opts, flutter: 0 });
+  mat.customProgramCacheKey = () => `wind-depth-${opts?.height}-${opts?.amp}`;
+  return mat;
+}
 
 /**
  * Kamera ile oyuncu arasında kalan (ya da kameraya çok yakın) parçaları ekran-kapısı
@@ -701,9 +1245,11 @@ export const sharedMaterials = {
  * içine girince görüş kaybolmaz.
  * uniforms: { uCamPos, uFocus: { value: Vector3 }, uNear: { value: 0..1 } }
  */
-export function createOccluderFadeMaterial(uniforms) {
+export function createOccluderFadeMaterial(uniforms, wind = null) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  if (wind) mat.customProgramCacheKey = () => `occ-wind-${wind.height}-${wind.amp}`;
   mat.onBeforeCompile = (shader) => {
+    if (wind) injectWind(shader, wind);
     shader.uniforms.uCamPos = uniforms.uCamPos;
     shader.uniforms.uFocus = uniforms.uFocus;
     shader.uniforms.uNear = uniforms.uNear;

@@ -2,7 +2,7 @@
 
 Tarayıcıda oynanan, gerçek 3D (Three.js) bir **ada hayatta kalma** oyunu. Gemi kazasından sağ kurtulan oyuncu, bilinmeyen bir adada sıfırdan başlar: kaynak toplar, alet üretir, ateş yakar, barınak kurar, adayı keşfeder ve "bu adada benden önce kim vardı?" sorusunun peşine düşer.
 
-Bu sürüm **MVP / Bölüm 1**'dir: baştan sona oynanabilir bir öğretici + hikâye zinciri içerir ve sonraki sistemler (savaş, düşmanlar, madencilik, tekneler, yeni adalar…) için modüler bir temel sunar.
+Bu sürüm **Bölüm 1 + Bölüm 2 başlangıcı**dır: baştan sona oynanabilir bir öğretici + hikâye zinciri, avlanma, mağara, sal/tekne ve seviyeyle açılan barınaklar içerir; sonraki sistemler (düşmanlar, fırın ve demir çağı, yeni adalar…) için modüler bir temel sunar.
 
 ---
 
@@ -30,13 +30,13 @@ Repoda `.github/workflows/deploy.yml` hazır: `main` dalına her gönderimde oyu
 | **Fare** | Bakış (oyuna tıklayınca imleç kilitlenir; kilit yoksa basılı tutup sürükle) |
 | **V** | 1. şahıs (gözden) ↔ 3. şahıs kamera |
 | **Fare tekerleği** | 3. şahısta kamerayı yakınlaştır/uzaklaştır |
-| **Sol tık / E** | Etkileşim, topla, vur (basılı tutunca devam eder) |
-| **Sağ tık** | Seçili eşyayı kullan (yiyecek ye) · inşa modunda iptal |
+| **Sol tık / E** | Etkileşim, topla, vur, hayvana saldır (basılı tutunca devam eder) · teknedeyken **E** ile in |
+| **Sağ tık** | Seçili eşyayı kullan (yiyecek ye, sal/tekneyi suya indir) · inşa modunda iptal |
 | **Shift** | Koş · **Boşluk** Zıpla |
 | **1–5** | Hızlı slot seç |
 | **I / Tab** | Envanter |
 | **C** | Üretim |
-| **B** | İnşa (R: döndür) |
+| **B** | İnşa (R: döndür) — önizleme mavi: uygun, kırmızı: bir şeyle çakışıyor |
 | **J** | Günlük (görevler + bulunan notlar) |
 | **M** | Harita (keşfettikçe açılır) |
 | **K** | Yetenekler |
@@ -51,18 +51,24 @@ Tüm tuşlar **Ayarlar → Kontroller** bölümünden değiştirilebilir. Sistem
 - **Ölçek**: her şey 1.8 m boyundaki karaktere göre: palmiyeler 9–11 m, orman ağaçları 8–10 m, çamlar 11–14 m, dev kayalar 3–6 m.
 - **Doğa**: oyuncunun çevresinde rüzgârda dalgalanan, yürürken kenara eğilen sık çimen ve çiçekler; büyük kayalar, kayalık sivri çıkıntılar, eğrelti otları, çalılar, devrik kütükler, kütükler, mantarlar, deniz kabukları, göl kıyısında sazlar.
 - **Oyuncu**: varsayılan **1. şahıs** (gözden) kamera, elde alet ve kol animasyonları (vurma, toplama, yeme), yürürken hafif baş sallanması; istenirse **V** ile 3. şahıs kamera (araziye/yapılara çarpmaz, aradaki ağaçlar şeffaflaşır).
+- **Yüzme**: ilerlerken serbest stil kulaç (3. şahısta kollar sırayla sudan çıkar, ayaklar çırpar, nefes için baş yana döner), dururken su sayma; 1. şahısta iki kolla kurbağalama; kulaçlarla su halkaları ve sıçramalar, başın dalgayla inip kalkması.
 - **Düşme hasarı**: ~4.5 m'den yüksek düşüşler can yakar (~18 m ölümcül); suya düşmek can yakmaz.
-- **Kaynaklar**: palmiye, orman ağacı, çam, kaya, kuru dal, çakıl taşı, lifli çalı, meyve çalısı, hindistan cevizi, balık sürüsü. Ağaçlar vuruldukça sallanır, devrilir ve bir süre sonra yeniden büyür.
-- **Aletler & üretim**: taş balta, taş kazma, meşale, taş mızrak, pişmiş yemekler, sargı, sırt çantaları (envanter 10 → 15 → 20). İstasyon gerektiren tarifler (kamp ateşi, çalışma masası).
-- **İnşa**: kamp ateşi (ışık + pişirme), küçük kulübe (uyku, doğma noktası), sandık (20 slot), çalışma masası. Şeffaf önizleme; geçersiz yerde kırmızı.
+- **Kaynaklar**: palmiye, orman ağacı, çam, kaya, kuru dal, çakıl taşı, lifli çalı, meyve çalısı, sarmaşık, hindistan cevizi, balık sürüsü. Ağaçlar ve çalılar rüzgârda sallanır (gölgeleriyle birlikte); ağaçlar vuruldukça sallanıp yaprak döker, son vuruşta gıcırdayıp hızlanarak devrilir, yere çarpınca seker, toz ve yaprak saçar, geride kütük bırakır ve bir süre sonra kütükten yeniden büyür.
+- **Sarmaşıklar**: orman ağaçlarının gövdesine sarılan ve dallardan sarkan sarmaşıklar; ormanda toplanabilir sarmaşık yumakları (sarmaşık → halat).
+- **Hayvanlar**: inek, koyun ve tavuk (yoğunluk bilerek düşük). Otlar, dolaşır, vurulunca kaçar; tavuklar yaklaşınca ürker. Ölünce zıplayarak yana devrilir, bacakları gerilir, gözleri kapanır. **Taş Bıçak** ile parçalanınca: inek → et + deri, koyun → yün + et, tavuk → et + tüy. Ölenlerin yerine bir süre sonra uzakta yenileri doğar.
+- **Aletler & üretim**: taş balta, taş kazma, taş bıçak, meşale, taş mızrak, olta (tüy), halat, yün battaniye, pişmiş yemekler (et dahil), sargı, sırt çantaları (envanter 10 → 15 → 20). İstasyon gerektiren tarifler (kamp ateşi, çalışma masası). Seviye kilitli tarifler adıyla ve gereken seviyeyle görünür.
+- **İnşa**: kamp ateşi (ışık + pişirme), yatak (uyku; yün battaniyeyle yapılır), sandık (20 slot), çalışma masası, kristal fener. Şeffaf önizleme: uygunsa mavi, bir ağaç, kaya, çalı, çakıl, kütük, yapı vb. ile çakışıyorsa **kırmızı** (neyle çakıştığı yazar). Yatak ve sandık barınakların içine konabilir.
+- **Barınaklar (seviyeyle açılır)**: Küçük Kulübe (görev), Saz Çardak (Sv 2), Ahşap Kulübe (Sv 5), Taş Ev (Sv 9). Yatak bir barınağın içindeyse uyku daha çok dinlendirir (konfor ★).
+- **Sal ve tekne (seviyeyle açılır)**: çalışma masasında Sal (Sv 4) ve yün yelkenli Tekne (Sv 8) üretilir, envanterden suya indirilir; binilir, W/S ileri-geri, A/D dönüş, kürek/dümen animasyonu, dalgalarla yalpalama, iz halkaları, sığlıkta karaya oturma; kıyıya yakınken **E** ile inilir. Tekne saldan hızlıdır ve açık denize daha uzağa gidebilir (2. ada yakında).
+- **Mağara**: dağın batı eteğindeki kaya kemerli girişten girilen, odalar ve tünellerden oluşan kapalı mağara. Karanlık (meşale işe yarar), sarkıt ve dikitler, parlayan kristaller, kömür ve demir damarları, ışıldayan mantarlar, tavandaki yarıktan süzülen ışıkla çıkış ve madencinin terk ettiği kamp (hikâye notu).
 - **Hayatta kalma**: can, açlık, susuzluk, enerji. Sıfıra inen değerler anında öldürmez; yavaşlatır, enerjiyi geç doldurur ve canı yavaşça azaltır. Bayılınca eşyalar kaybolmaz.
-- **Gün/gece**: hızlandırılmış saat (gündüz ~10 dk, gece ~3.5 dk), gün sayacı, akşam uyarısı, kulübede uyuyarak sabahı bekleme. Geceleri ateş böcekleri ve ormanda uzaktan izleyen parlayan gözler.
-- **Görevler**: 16 öğretici/ana görev + 10 yan görev; pusula ve ekranda hedef işaretleri.
-- **Hikâye**: gemi enkazındaki seyir defteri, terk edilmiş kamp ve günlük, üç antik sembol taşı, dağın altındaki mühürlü kapı (Bölüm 1 finali).
+- **Gün/gece**: hızlandırılmış saat (gündüz ~10 dk, gece ~3.5 dk), gün sayacı, akşam uyarısı, yatakta uyuyarak sabahı bekleme. Geceleri ateş böcekleri ve ormanda uzaktan izleyen parlayan gözler.
+- **Görevler**: 21 öğretici/ana görev + 13 yan görev (av, yatak, mağara, sarmaşık, sal…); pusula ve ekranda hedef işaretleri (hayvanlar ve mağara içi hedefler dahil).
+- **Hikâye**: gemi enkazındaki seyir defteri, terk edilmiş kamp ve günlük, üç antik sembol taşı, dağın altındaki mühürlü kapı (Bölüm 1 finali), mağaradaki madencinin defteri (Bölüm 2).
 - **İlerleme**: XP, seviye (50'ye kadar), her seviyede yetenek puanı, 8 yetenek, görsel teknoloji ağacı.
 - **Keşif**: sisli harita (fog of war), bölge keşif bildirimleri.
 - **Ses**: tamamen prosedürel (dosya yok): dalga, rüzgâr, kuşlar, cırcır böcekleri, uzak uluma, ateş çıtırtısı, efektler ve seyrek, alçak sesli ambiyans müziği.
-- **Kayıt**: otomatik (60 sn'de bir + önemli olaylarda), elle kaydetme, ana menüden devam.
+- **Kayıt**: otomatik (60 sn'de bir + önemli olaylarda), elle kaydetme, ana menüden devam. Eski kayıtlar yeni sürüme otomatik uyarlanır (yeni tarif/yapılar seviyeye ve tamamlanan görevlere göre açılır).
 - **Ayarlar**: ses kanalları, grafik kalitesi (Düşük/Orta/Yüksek), kamera modu, baş sallanması, FOV, fare hassasiyeti, Y ekseni, FPS göstergesi, tuş atamaları.
 
 ## Klasör yapısı
@@ -101,7 +107,7 @@ src/
     ResourceNode.js      tek bir kaynak
     Models.js            tüm prosedürel düşük poligon modeller
     Landmarks.js         enkaz, kamp, sembol taşları, mühürlü kapı
-    Collision.js         2D çarpışma dünyası + platformlar
+    Collision.js         2D çarpışma dünyası (yüzey/mağara katmanları) + platformlar + dikdörtgen kesişimleri
     GrassField.js        oyuncuyu takip eden sık çimen alanı (rüzgâr, eğilme, kenarda solma)
     DecorScatter.js      kaya, eğrelti, çalı, kütük, mantar, kabuk, saz yerleşimi
     Clouds.js            sürüklenen bulutlar
@@ -110,6 +116,9 @@ src/
     Particles.js         havuzlanmış parçacıklar
     LightPool.js         sabit sayıda nokta ışık (shader yeniden derlemesini önler)
     ItemDrops.js         envanter dolunca yere bırakılan çuvallar
+    Cave.js              dağın altındaki mağara: SDF tabanlı zemin/tavan, süsler, çıkış, kaynak yerleşimi
+    AnimalModels.js      inek, koyun, tavuk modelleri (eklemli parçalar)
+    Ripples.js           su yüzeyinde genişleyen halkalar (yüzme, kürek, tekne izi)
   systems/
     InteractionSystem.js hedef seçimi, toplama, vurma, yeme, su içme
     CraftingSystem.js    üretim
@@ -118,10 +127,12 @@ src/
     ProgressionSystem.js XP, seviye, yetenekler
     ExplorationSystem.js bölgeler, harita sisi, önemli noktalar
     LootSystem.js        düşüş tabloları, nadirlik
+    AnimalSystem.js      hayvan yapay zekâsı, avlanma, ölüm animasyonu, parçalama, yeniden doğma
+    VehicleSystem.js     sal/tekne: suya indirme, binme, sürme, kıyıya inme
   ui/                    HUD, paneller (envanter, üretim, inşa, günlük, harita, yetenekler,
                          teknoloji ağacı, sandık, not) ve menüler
   data/                  TÜM içerik burada, veri olarak:
-    items.js recipes.js resources.js buildings.js quests.js lore.js landmarks.js
+    items.js recipes.js resources.js buildings.js quests.js lore.js landmarks.js animals.js
     perks.js techtree.js regions.js islands.js progression.js rarities.js controls.js
   utils/                 matematik ve tohumlanabilir gürültü
 ```
@@ -143,11 +154,13 @@ iron_axe: {
 
 **Yeni tarif** (`data/recipes.js`): `{ id, result, count, category, ingredients, station, unlock, xp }`
 
-**Yeni görev** (`data/quests.js`): hedef türleri `collect, craft, cook, fell, build, discover, interact, region, regions, sleep, drink, level, day, walk`. Ödüller tarif, yapı, sistem (`features`) ve yetenek puanı açabilir; `next` ile zincirlenir.
+**Yeni görev** (`data/quests.js`): hedef türleri `collect, craft, cook, fell, build, discover, interact, region, regions, sleep, drink, level, day, walk, kill, butcher, sail`. Ödüller tarif, yapı, sistem (`features`) ve yetenek puanı açabilir; `next` ile zincirlenir.
+
+**Yeni hayvan** (`data/animals.js` + `world/AnimalModels.js` içinde bir model): can, hız, bölgeler, sürü sayısı ve bıçakla parçalayınca düşenler (`harvest`).
 
 **Yeni kaynak** (`data/resources.js` + `world/Models.js` içinde bir model fonksiyonu + `ResourceManager.generate()` içinde bir dağılım kuralı).
 
-**Yeni yapı** (`data/buildings.js` + `Models.js` → `BUILDING_BUILDERS`).
+**Yeni yapı** (`data/buildings.js` + `Models.js` → `BUILDING_BUILDERS`). `bounds` taban dikdörtgenini (yerleştirme/çakışma), `unlock: { level }` seviye kilidini, `shelter/comfort/interior` barınak özelliklerini belirler.
 
 ## Performans notları
 
@@ -156,20 +169,20 @@ iron_axe: {
 - Çimen yalnızca oyuncunun çevresindeki ~48 m'de, hücre hücre üretilir; kenarda yumuşakça zemine iner.
 - Modeller düşük poligonlu ve köşe renklidir; doku yüklenmez.
 - Tek gölge ışığı oyuncuyu takip eder; gölge haritası kaliteye göre 1024/2048 ya da kapalı.
+- Rüzgâr salınımı tamamen köşe gölgelendiricisinde (GPU) hesaplanır; ek CPU maliyeti yoktur.
+- Mağara yüzeyden ayrı bir alandır: içerideyken ada, su ve gökyüzü hiç çizilmez; ışık havuzu 3B uzaklığa göre seçer.
+- Uzaktaki hayvanlar donar ve çizilmez; kütükler tek bir InstancedMesh ile yalnızca kullanılan yuvalar kadar çizilir.
 - Nokta ışıklar sabit bir havuzdan atanır (ışık sayısı değişince oluşan shader derleme takılmaları önlenir).
 - Su derinliği yükseklik dokusundan okunur; ek derinlik geçişi gerekmez.
 - Grafik kalitesi: piksel oranı, gölgeler, gölge çözünürlüğü, çimen yoğunluğu, ağaç LOD mesafesi ve sis mesafesi.
 
 ## Yol haritası (sonraki aşamalar)
 
-Mevcut MVP, istenen geliştirme sırasının 1–7. aşamalarını ve görev/ilerleme/keşif sistemlerinin temelini kapsar. Sıradakiler:
+Tamamlananlar: pasif hayvanlar ve avlanma (inek, koyun, tavuk), mağara + madencilik (kömür, demir, kristal), sal ve tekne, seviyeyle açılan barınaklar. Sıradakiler:
 
-1. **Hayvanlar** — tavuk, geyik, koyun (pasif); et, deri, tüy, yün → `systems/EnemySystem.js` + `data/enemies.js`
-2. **Savaş** — normal/güçlü saldırı, kaçınma; mızrak ve kılıç → `systems/CombatSystem.js` (yetenek sistemindeki *Savaşçı* bonusu hazır)
-3. **Düşman yapay zekâsı** — yaban domuzu, kurt, orman yaratığı; gece daha fazla düşman (gece gözleri bunun habercisi)
+1. **2. ada** — tekneyle ufuktaki adalardan birine (volkan, buz, çöl) yolculuk
+2. **Savaş & düşmanlar** — güçlü saldırı, kaçınma; yaban domuzu, kurt, orman yaratığı; gece daha fazla düşman (gece gözleri bunun habercisi). Hasar/yetenek altyapısı avlanmada kullanılıyor.
+3. **Demir çağı** — fırın (kömür + demir cevheri → demir külçe), demir aletler, mühürlü kapının açılması
 4. **Tarım** — toprak hazırla → ek → sula → bekle → hasat → `systems/FarmingSystem.js`
-5. **Madencilik & mağaralar** — kömür, demir, bakır; mühürlü kapının ardındaki mağara
-6. **Demir çağı** — fırın, demir aletler, demirci (teknoloji ağacında "Yakında" düğümleri)
-7. **Bosslar** — Dev Orman Canavarı, Taş Golem, Lav Golemi
-8. **Tekne & yeni adalar** — sal → küçük tekne → gelişmiş tekne; ufuktaki volkan, buz ve çöl adaları
-9. **Gelişmiş teknoloji & endgame** — çelik, gelişmiş atölye, kristal teknolojisi
+5. **Bosslar** — Dev Orman Canavarı, Taş Golem, Lav Golemi
+6. **Gelişmiş teknoloji & endgame** — çelik, gelişmiş atölye, kristal teknolojisi

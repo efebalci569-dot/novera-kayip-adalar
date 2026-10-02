@@ -1,6 +1,8 @@
 import { xpForLevel, MAX_LEVEL } from '../data/progression.js';
 import { PERKS } from '../data/perks.js';
 import { RECIPES } from '../data/recipes.js';
+import { BUILDINGS } from '../data/buildings.js';
+import { QUESTS } from '../data/quests.js';
 
 /** Deneyim, seviye ve yetenekler. Diğer sistemler bonusları bonus(key) ile okur. */
 export class ProgressionSystem {
@@ -36,10 +38,29 @@ export class ProgressionSystem {
     for (const r of RECIPES) {
       if (r.unlock?.level && r.unlock.level <= this.level && game.state.unlockRecipe(r.id)) unlocked.push(r);
     }
+    for (const [id, b] of Object.entries(BUILDINGS)) {
+      if (b.unlock?.level && b.unlock.level <= this.level) game.state.unlockBuilding(id);
+    }
     const stats = game.player.stats;
     stats.health = Math.min(stats.maxHealth, stats.health + stats.maxHealth * 0.25);
     stats.stamina = stats.maxStamina;
     game.bus.emit('level:up', { level: this.level, recipes: unlocked });
+  }
+
+  /**
+   * Kayıt yüklenince: seviyeye bağlı tarif/yapıları ve tamamlanmış görevlerin açtığı
+   * tarif/yapı/sistemleri yeniden uygular. Yeni sürümde eklenen içerik eski kayıtlarda da açılır.
+   */
+  syncUnlocks() {
+    const { state, quests } = this.game;
+    for (const r of RECIPES) if (r.unlock?.level && r.unlock.level <= this.level) state.unlockRecipe(r.id);
+    for (const [id, b] of Object.entries(BUILDINGS)) if (b.unlock?.level && b.unlock.level <= this.level) state.unlockBuilding(id);
+    for (const id of quests.completed) {
+      const r = QUESTS[id]?.rewards ?? {};
+      for (const rid of r.recipes ?? []) state.unlockRecipe(rid);
+      for (const bid of r.buildings ?? []) state.unlockBuilding(bid);
+      for (const f of r.features ?? []) state.unlockFeature(f);
+    }
   }
 
   /** Tüm yeteneklerden gelen toplam bonus (ör. 'treeDamage' → 0.4). */

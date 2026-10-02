@@ -1,6 +1,7 @@
 import { REGIONS } from '../data/regions.js';
 import { LANDMARKS } from '../data/landmarks.js';
 import { XP_REWARDS } from '../data/progression.js';
+import { ITEMS } from '../data/items.js';
 
 const FOG_SIZE = 160; // 160×160 hücre
 const FOG_EXTENT = 480; // dünya genişliği (m) → hücre ≈ 3 m
@@ -73,8 +74,8 @@ export class ExplorationSystem {
     const p = g.player.position;
     const island = g.world.island;
 
-    let region = island.region(p.x, p.z);
-    if (g.player.swimming && region !== 'lake') region = 'sea';
+    let region = g.world.inCave ? 'cave' : island.region(p.x, p.z);
+    if (!g.world.inCave && g.player.swimming && region !== 'lake') region = 'sea';
     if (region !== this.currentRegion) {
       this.currentRegion = region;
       const def = REGIONS[region];
@@ -86,10 +87,11 @@ export class ExplorationSystem {
       g.bus.emit('region:entered', { id: region, first, def });
     }
 
-    this.reveal(p.x, p.z, REVEAL_RADIUS);
+    if (!g.world.inCave) this.reveal(p.x, p.z, REVEAL_RADIUS);
 
     for (const e of g.world.landmarks.list) {
       if (this.landmarksDiscovered.has(e.id)) continue;
+      if (e.cave !== g.world.inCave) continue; // mağaradaki noktalar yüzeyden (ve tersi) keşfedilmez
       if (Math.hypot(e.x - p.x, e.z - p.z) < e.def.discoverRadius) this.discoverLandmark(e);
     }
   }
@@ -114,7 +116,7 @@ export class ExplorationSystem {
   landmarkPrompt(entry) {
     const def = entry.def;
     const used = this.landmarksUsed.has(entry.id);
-    if (used && def.gives) return { action: 'İncele', name: `${def.name} (sönük)`, disabled: true, note: 'Sembol parçasını zaten aldın' };
+    if (used && def.gives && !def.keepUsable) return { action: 'İncele', name: `${def.name} (sönük)`, disabled: true, note: 'Sembol parçasını zaten aldın' };
     if (used) return { action: def.actionAgain ?? def.action, name: def.name };
     if (def.requires) {
       const inv = this.game.player.inventory;
@@ -131,8 +133,17 @@ export class ExplorationSystem {
     const used = this.landmarksUsed.has(entry.id);
     this.discoverLandmark(entry);
 
+    if (def.enter === 'cave') {
+      if (!used) {
+        this.landmarksUsed.add(entry.id);
+        g.bus.emit('landmark:interacted', { id: entry.id });
+      }
+      g.enterCave();
+      return;
+    }
+
     if (used) {
-      if (def.gives) return;
+      if (def.gives && !def.keepUsable) return;
       if (def.lore) g.ui.open('note', { id: def.lore });
       return;
     }
@@ -153,7 +164,7 @@ export class ExplorationSystem {
         const left = g.player.inventory.add(item, n);
         if (left > 0) g.world.drops.spawn(g.player.position.x, g.player.position.z, [{ id: item, count: left }]);
         g.bus.emit('item:gathered', { item, amount: n });
-        g.ui.hud.floatText(`+${n} 💠 Antik Sembol Parçası`, '#7ff3ff');
+        g.ui.hud.floatText(`+${n} ${ITEMS[item].icon} ${ITEMS[item].name}`, '#7ff3ff');
       }
       g.world.particles.emit('magic', entry.x, entry.y + 1.6, entry.z, 1.4);
     }

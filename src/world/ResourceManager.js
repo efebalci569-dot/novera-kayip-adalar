@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { RESOURCES } from '../data/resources.js';
-import { buildResourceGeometries, sharedMaterials, createOccluderFadeMaterial } from './Models.js';
+import {
+  buildResourceGeometries, buildTreeStumpGeometry, sharedMaterials, createOccluderFadeMaterial,
+  createWindMaterial, createWindDepthMaterial,
+} from './Models.js';
 import { ResourceNode } from './ResourceNode.js';
 import { WATER_LEVEL } from './Island.js';
 import { buildChunkedInstances, DistanceCuller } from './InstancedChunks.js';
@@ -8,14 +11,24 @@ import { mulberry32, randRange, clamp } from '../utils/math.js';
 
 const SPACING = {
   palm_tree: 4.6, oak_tree: 5.6, pine_tree: 5.0, rock: 4.6, pebble: 2.2, stick: 2.2,
-  fiber_bush: 2.4, berry_bush: 3.0, coconut: 1.0, fish_spot: 22,
+  fiber_bush: 2.4, berry_bush: 3.0, coconut: 1.0, fish_spot: 22, vine_tangle: 3.2,
+  coal_ore: 3.5, iron_ore: 3.5, crystal_node: 3.0, cave_mushroom: 2.0,
 };
+
+// Ağaç türüne göre rüzgâr salınımı (tepe yüksekliği ve genliği)
+const TREE_WIND = {
+  palm_tree: { height: 10, amp: 0.42, flutter: 0.05 },
+  oak_tree: { height: 9, amp: 0.26, flutter: 0.045 },
+  pine_tree: { height: 12, amp: 0.3, flutter: 0.025 },
+};
+const PLANT_WIND = { height: 1.6, amp: 0.09, flutter: 0.03 };
+const STUMP_CAPACITY = 400;
 
 
 // Büyük nesneler dünya parçalarına bölünerek çizilir (görünmeyen parçalar atlanır)
 const CHUNKED_GROUPS = new Set(['tree', 'rock']);
 
-const SHADOW_TYPES = new Set(['palm_tree', 'oak_tree', 'pine_tree', 'rock', 'berry_bush']);
+const SHADOW_TYPES = new Set(['palm_tree', 'oak_tree', 'pine_tree', 'rock', 'berry_bush', 'vine_tangle']);
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -25,6 +38,54 @@ const _p = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _axis = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
+const _zero = new THREE.Matrix4().makeScale(0, 0, 0);
+const easeIn = (t) => t * t;
+
+/** Devrilen ağaçların yerinde kalan kütükler (tek InstancedMesh, boş yuvalar sıfır ölçekli). */
+class StumpPool {
+  constructor(group) {
+    this.mesh = new THREE.InstancedMesh(buildTreeStumpGeometry(), sharedMaterials.standard, STUMP_CAPACITY);
+    this.mesh.name = 'stumps';
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+    this.mesh.frustumCulled = false;
+    for (let i = 0; i < STUMP_CAPACITY; i++) this.mesh.setMatrixAt(i, _zero);
+    this.free = Array.from({ length: STUMP_CAPACITY }, (_, i) => STUMP_CAPACITY - 1 - i);
+    this.used = new Set();
+    this.mesh.count = 0; // yalnızca kullanılan yuvalar çizilir
+    group.add(this.mesh);
+  }
+
+  updateCount() {
+    let max = -1;
+    for (const i of this.used) if (i > max) max = i;
+    this.mesh.count = max + 1;
+  }
+
+  add(node) {
+    if (node.stumpIndex !== undefined && node.stumpIndex >= 0) return;
+    const idx = this.free.pop();
+    if (idx === undefined) return;
+    node.stumpIndex = idx;
+    this.used.add(idx);
+    this.updateCount();
+    const s = node.scale * (node.def.stump ?? 0.8);
+    _qYaw.setFromAxisAngle(_up, node.yaw);
+    _m.compose(_p.set(node.x, node.y + 0.05, node.z), _qYaw, _s.set(s, s * 0.9, s));
+    this.mesh.setMatrixAt(idx, _m);
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  remove(node) {
+    if (node.stumpIndex === undefined || node.stumpIndex < 0) return;
+    this.mesh.setMatrixAt(node.stumpIndex, _zero);
+    this.mesh.instanceMatrix.needsUpdate = true;
+    this.free.push(node.stumpIndex);
+    this.used.delete(node.stumpIndex);
+    this.updateCount();
+    node.stumpIndex = -1;
+  }
+}
 
 /**
  * Kaynak düğümlerini üretir, InstancedMesh'lerle çizer, animasyonlarını ve
@@ -38,6 +99,9 @@ export class ResourceManager {
     this.collision = world.collision;
     this.group = new THREE.Group();
     this.group.name = 'resources';
+    // mağara kaynakları ayrı grupta (mağaraya girince yalnızca bunlar görünür)
+    this.caveGroup = new THREE.Group();
+    this.caveGroup.name = 'caveResources';
     this.nodes = [];
     this.byType = {};
     this.grid = new Map();
@@ -46,9 +110,11 @@ export class ResourceManager {
     this.depleted = new Set();
     this.animatedTypes = [];
     this.respawnTimer = 0;
-    // ağaçlar kamera ile oyuncu arasında kalınca şeffaflaşır (WorldManager günceller)
-    this.treeMaterial = createOccluderFadeMaterial(world.occlusion);
+    // ağaçlar kamera ile oyuncu arasında kalınca şeffaflaşır (WorldManager günceller) ve rüzgârda sallanır
+    this.treeMaterials = {};
+    this.plantMaterial = createWindMaterial(PLANT_WIND);
     this.culler = new DistanceCuller();
+    this.stumps = new StumpPool(this.group);
     this.lodPairs = [];
     this.lodDistance = 70; // parça kenarına bu mesafeden uzak ağaçlar düşük poligonlu çizilir (kaliteyle değişir)
   }
@@ -174,6 +240,8 @@ export class ResourceManager {
       { type: 'fiber_bush', count: 110, test: (i) => (i.region === 'meadow' || i.region === 'forest' || i.region === 'beach') && i.h > 0.8 },
       { type: 'berry_bush', count: 55, test: (i) => i.region === 'forest' || i.region === 'meadow' },
       { type: 'fish_spot', count: 18, test: (i) => i.h > -1.9 && i.h < -0.6 && i.inland < -2 },
+      { type: 'vine_tangle', count: 38, test: (i) => i.region === 'forest' && i.slope < 0.7 },
+      { type: 'vine_tangle', count: 6, test: (i) => i.region === 'meadow' && i.slope < 0.5 && isl.forestMask(i.x, i.z) > 0.25 },
     ];
     for (const rule of rules) {
       let placed = 0;
@@ -199,27 +267,48 @@ export class ResourceManager {
       }
     }
 
+    // 4) Mağara (dağın altındaki kapalı alan) kendi kaynaklarını yerleştirir
+    this.world.cave?.placeResources(this, rng);
+
     this.buildMeshes();
   }
 
-  createNode(type, x, z, rng) {
+  /** y verilirse arazi yerine o yükseklik kullanılır (mağara tabanı). */
+  createNode(type, x, z, rng, y = null) {
     const def = RESOURCES[type];
     const variants = def.variants ?? 1;
     const variant = Math.floor(rng() * variants);
     const scale = def.group === 'tree' ? randRange(rng, 0.85, 1.2) : def.group === 'rock' ? randRange(rng, 0.8, 1.25) : randRange(rng, 0.85, 1.15);
-    let y;
-    if (type === 'fish_spot') y = WATER_LEVEL;
-    else {
-      const slope = this.terrain.getSlope(x, z);
-      y = this.terrain.getHeight(x, z) - (def.group === 'tree' ? 0.15 + slope * 0.4 : 0.03 + slope * 0.1);
+    if (y === null) {
+      if (type === 'fish_spot') y = WATER_LEVEL;
+      else {
+        const slope = this.terrain.getSlope(x, z);
+        y = this.terrain.getHeight(x, z) - (def.group === 'tree' ? 0.15 + slope * 0.4 : 0.03 + slope * 0.1);
+      }
     }
     const node = new ResourceNode(this.nodes.length, type, def, x, y, z, rng() * Math.PI * 2, scale, variant);
     node.spacing = SPACING[type];
     this.nodes.push(node);
     (this.byType[type] ??= []).push(node);
     this.addToGrid(node);
-    if (def.collider) node.collider = this.collision.addCircle(x, z, def.collider * scale, node);
+    if (def.collider) node.collider = this.collision.addCircle(x, z, def.collider * scale, node, def.cave ? 'cave' : 'surface');
+    if (def.light) {
+      const L = def.light;
+      node.light = this.world.lights.add({ x, y: y + L.y * scale, z, color: L.color, intensity: L.intensity, distance: L.distance, flicker: false });
+    }
     return node;
+  }
+
+  treeMaterial(type) {
+    return (this.treeMaterials[type] ??= createOccluderFadeMaterial(this.world.occlusion, TREE_WIND[type] ?? TREE_WIND.oak_tree));
+  }
+
+  materialFor(type) {
+    const def = RESOURCES[type];
+    if (def.group === 'tree') return this.treeMaterial(type);
+    if (def.glow) return sharedMaterials.glow;
+    if (def.sway === 'plant') return this.plantMaterial;
+    return sharedMaterials.standard;
   }
 
   buildMeshes() {
@@ -228,18 +317,23 @@ export class ResourceManager {
       const geos = buildResourceGeometries(def.model, def.variants ?? 1);
       const isTree = def.group === 'tree';
       const big = CHUNKED_GROUPS.has(def.group);
-      const meshes = buildChunkedInstances(this.group, geos, nodes, isTree ? this.treeMaterial : sharedMaterials.standard, {
+      const parent = def.cave ? this.caveGroup : this.group;
+      const material = this.materialFor(type);
+      const meshes = buildChunkedInstances(parent, geos, nodes, material, {
         name: type,
         chunkSize: big ? 120 : 60,
-        castShadow: SHADOW_TYPES.has(type),
+        castShadow: SHADOW_TYPES.has(type) || (def.cave && !def.glow),
         receiveShadow: isTree || def.group === 'rock',
         padding: isTree ? 14 : 1, // devrilen ağaçlar sınır küresinin dışına taşabilir
       });
-      if (!big) this.culler.add(meshes, 130);
+      if (!big) this.culler.add(meshes, def.cave ? 60 : 130);
       if (isTree) {
+        // gölgeler de rüzgârla birlikte sallansın
+        const depth = createWindDepthMaterial(TREE_WIND[type] ?? TREE_WIND.oak_tree);
+        for (const m of meshes) m.customDepthMaterial = depth;
         // uzak parçalar için düşük poligonlu ikiz (gölge düşürmez); LOD seçimi update() içinde
         const lodGeos = buildResourceGeometries(def.model, def.variants ?? 1, true);
-        const lodMeshes = buildChunkedInstances(this.group, lodGeos, nodes, this.treeMaterial, {
+        const lodMeshes = buildChunkedInstances(this.group, lodGeos, nodes, material, {
           name: type + '_lod', chunkSize: 120, padding: 14, assign: 'lod',
         });
         meshes.forEach((m, i) => this.lodPairs.push({ high: m, low: lodMeshes[i] }));
@@ -279,16 +373,37 @@ export class ResourceManager {
     if (node.hp <= 0) {
       this.deplete(node);
       if (node.def.fells) {
-        node.anim = { type: 'fall', t: 0, dur: 1.5, dirX: dx / d, dirZ: dz / d, sunk: 0 };
+        // önce gıcırdayıp hafifçe eğilir, sonra hızlanarak devrilir, yere çarpıp seker, bir süre yatar ve toprağa karışır
+        node.anim = { type: 'fall', t: 0, dur: 99, phase: 'creak', ang: 0, vel: 0, bounces: 0, rest: 0, sink: 0, dirX: dx / d, dirZ: dz / d };
+        this.stumps.add(node);
       } else {
         node.anim = { type: 'shrink', t: 0, dur: 0.35 };
       }
       this.animating.add(node);
       return true;
     }
-    node.anim = { type: 'shake', t: 0, dur: 0.32, dirX: dx / d, dirZ: dz / d };
+    const tree = node.def.group === 'tree';
+    node.anim = { type: 'shake', t: 0, dur: tree ? 0.55 : 0.32, amp: tree ? 0.075 : 0.07, dirX: dx / d, dirZ: dz / d };
     this.animating.add(node);
     return false;
+  }
+
+  /** Devrilen ağacın tepesi yere değdiğinde: toz, yaprak, ses ve yakındaysa sarsıntı. */
+  onTreeLanded(n, a) {
+    const game = this.world.game;
+    const L = (n.def.crownY ?? 7) * n.scale * 0.72;
+    const x = n.x + a.dirX * L;
+    const z = n.z + a.dirZ * L;
+    const y = this.terrain.getHeight(x, z) + 0.4;
+    const parts = this.world.particles;
+    parts.emit('dust', x, y, z, 2.2);
+    parts.emit(n.def.leafParticle ?? 'leaf', x, y + 0.8, z, 3);
+    parts.emit('dust', n.x + a.dirX * L * 0.45, y, n.z + a.dirZ * L * 0.45, 1.2);
+    const p = game.player.position;
+    const dist = Math.hypot(p.x - x, p.z - z);
+    game.audio.play('crash', { volume: Math.max(0.15, 1 - dist / 40) });
+    if (dist < 18) game.cameraController.impact(0.14 * (1 - dist / 18));
+    game.bus.emit('resource:treeLanded', { node: n });
   }
 
   /** Elle toplama. Kaynak tükendiyse true döner. */
@@ -300,7 +415,7 @@ export class ResourceManager {
       this.animating.add(node);
       return true;
     }
-    node.anim = { type: 'shake', t: 0, dur: 0.3, dirX: 1, dirZ: 0.3 };
+    node.anim = { type: 'shake', t: 0, dur: 0.3, amp: 0.07, dirX: 1, dirZ: 0.3 };
     this.animating.add(node);
     return false;
   }
@@ -309,16 +424,20 @@ export class ResourceManager {
     node.active = false;
     node.respawnAt = this.world.game.time.elapsed + (node.def.respawn ?? 300);
     if (node.collider) node.collider.enabled = false;
+    if (node.light) node.light.enabled = false;
     this.depleted.add(node);
   }
 
-  /** Yapı yerleştirilen alandaki küçük kaynakları kalıcı olarak kaldırır. */
+  /** Yapı yerleştirilen alandaki (görünmeyen, tükenmiş) kaynakları kalıcı olarak kaldırır. */
   removeNode(node) {
     node.removed = true;
     node.active = false;
     if (node.collider) node.collider.enabled = false;
+    if (node.light) node.light.enabled = false;
     this.depleted.delete(node);
+    this.stumps.remove(node);
     node.anim = null;
+    this.animating.delete(node);
     this.writeMatrix(node);
   }
 
@@ -329,8 +448,14 @@ export class ResourceManager {
     node.tiltX = node.tiltZ = 0;
     node.offsetY = 0;
     if (node.collider) node.collider.enabled = true;
-    node.anim = { type: 'grow', t: 0, dur: 0.9 };
+    if (node.light) node.light.enabled = true;
+    const tree = node.def.group === 'tree';
+    node.anim = { type: 'grow', t: 0, dur: tree ? 1.8 : 0.9 };
     node.scaleMul = 0.01;
+    if (tree) {
+      this.stumps.remove(node);
+      this.world.particles.emit('leaf', node.x, node.y + 0.6, node.z, 1.2);
+    }
     this.animating.add(node);
     this.depleted.delete(node);
   }
@@ -355,32 +480,30 @@ export class ResourceManager {
       a.t += dt;
       const k = clamp(a.t / a.dur, 0, 1);
       if (a.type === 'shake') {
-        const amp = Math.sin(a.t * 45) * 0.07 * (1 - k);
-        n.tiltX = a.dirZ * amp;
-        n.tiltZ = -a.dirX * amp;
+        // vuruş yönünde sönümlü sallanma + yan salınım (ağaçlarda daha uzun sürer)
+        const fade = (1 - k) * (1 - k);
+        const amp = Math.sin(a.t * 38) * a.amp * fade;
+        const side = Math.sin(a.t * 23 + 1.3) * a.amp * 0.35 * fade;
+        n.tiltX = a.dirZ * amp + a.dirX * side;
+        n.tiltZ = -a.dirX * amp + a.dirZ * side;
         if (k >= 1) this.finishAnim(n);
       } else if (a.type === 'fall') {
-        const ang = Math.min(k * k, 1) * (Math.PI / 2 - 0.08);
-        n.tiltX = a.dirZ * ang;
-        n.tiltZ = -a.dirX * ang;
-        if (k >= 1) {
-          if (!a.landed) {
-            a.landed = true;
-            this.world.game.bus.emit('resource:treeLanded', { node: n });
-          }
-          a.sunk += dt;
-          n.scaleMul = Math.max(0, 1 - a.sunk / 0.7);
-          if (a.sunk >= 0.7) this.finishAnim(n);
-        }
+        this.updateFall(n, a, dt);
       } else if (a.type === 'shrink') {
         n.scaleMul = 1 - k;
         if (k >= 1) this.finishAnim(n);
       } else if (a.type === 'grow') {
-        const c1 = 1.70158, c3 = c1 + 1;
-        n.scaleMul = Math.max(0.01, 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2));
+        if (n.def.group === 'tree') {
+          // fidan gibi büyüyüp hafifçe esneyerek yerine oturur
+          const e = 1 - Math.pow(1 - k, 3);
+          n.scaleMul = Math.max(0.01, e + Math.sin(k * Math.PI * 3) * 0.06 * (1 - k));
+        } else {
+          const c1 = 1.70158, c3 = c1 + 1;
+          n.scaleMul = Math.max(0.01, 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2));
+        }
         if (k >= 1) this.finishAnim(n);
       }
-      this.writeMatrix(n);
+      if (a.type !== 'fall') this.writeMatrix(n);
     }
 
     // animasyonlu kaynaklar (balık sürüleri döner)
@@ -401,6 +524,55 @@ export class ResourceManager {
         this.respawn(n);
       }
     }
+  }
+
+  /** Devrilme: fiziğe benzer açısal ivme, yere çarpınca iki küçük sekme, bekleme ve toprağa gömülme. */
+  updateFall(n, a, dt) {
+    const maxAng = Math.PI / 2 - 0.1;
+    if (a.phase === 'creak') {
+      const k = Math.min(1, a.t / 0.4);
+      a.ang = 0.06 * easeIn(k) + Math.sin(a.t * 34) * 0.008 * (1 - k);
+      if (k >= 1) {
+        a.phase = 'fall';
+        a.vel = 0.3;
+      }
+    } else if (a.phase === 'fall') {
+      a.vel += 4.2 * Math.sin(a.ang + 0.1) * dt;
+      a.ang += a.vel * dt;
+      if (a.ang >= maxAng) {
+        a.ang = maxAng;
+        if (!a.landed) {
+          a.landed = true;
+          this.onTreeLanded(n, a);
+        }
+        if (a.bounces < 2 && a.vel > 0.35) {
+          a.vel = -a.vel * (a.bounces === 0 ? 0.22 : 0.15);
+          a.bounces++;
+        } else {
+          a.phase = 'rest';
+          a.vel = 0;
+        }
+      }
+    } else if (a.phase === 'rest') {
+      a.rest += dt;
+      if (a.rest > 1.4) {
+        a.phase = 'sink';
+        this.world.particles.emit('dust', n.x + a.dirX * 2, n.y + 0.4, n.z + a.dirZ * 2, 1.4);
+      }
+    } else if (a.phase === 'sink') {
+      a.sink += dt;
+      const k = Math.min(1, a.sink / 0.9);
+      n.offsetY = -easeIn(k) * 1.4 * n.scale;
+      n.scaleMul = 1 - k * 0.55;
+      if (k >= 1) {
+        n.offsetY = 0;
+        this.finishAnim(n);
+        return;
+      }
+    }
+    n.tiltX = a.dirZ * a.ang;
+    n.tiltZ = -a.dirX * a.ang;
+    this.writeMatrix(n);
   }
 
   finishAnim(n) {
@@ -431,7 +603,11 @@ export class ResourceManager {
       n.removed = !!removed;
       n.respawnAt = elapsed + respawnIn;
       if (n.collider) n.collider.enabled = n.active && !n.removed;
-      if (!n.active && !n.removed) this.depleted.add(n);
+      if (n.light) n.light.enabled = n.active && !n.removed;
+      if (!n.active && !n.removed) {
+        this.depleted.add(n);
+        if (n.def.fells) this.stumps.add(n);
+      }
       this.writeMatrix(n);
     }
   }

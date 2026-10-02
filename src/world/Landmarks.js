@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { LANDMARKS } from '../data/landmarks.js';
-import { part, merge, sharedMaterials } from './Models.js';
+import { part, merge, sharedMaterials, hangingVine } from './Models.js';
 import { mulberry32, randRange } from '../utils/math.js';
 
 function glyphTexture(kind) {
@@ -79,8 +79,9 @@ export class Landmarks {
     for (const [id, def] of Object.entries(LANDMARKS)) {
       const p = pts[id];
       if (!p) continue;
-      const y = world.terrain.getHeight(p.x, p.z);
-      const entry = { id, def, x: p.x, y, z: p.z, used: false, discovered: false, interactPoint: { x: p.x, y, z: p.z } };
+      const inCave = def.cave && world.cave;
+      const y = inCave ? world.cave.floorHeight(p.x, p.z) : world.terrain.getHeight(p.x, p.z);
+      const entry = { id, def, x: p.x, y, z: p.z, used: false, discovered: false, interactPoint: { x: p.x, y, z: p.z }, cave: !!inCave };
       this.list.push(entry);
       this.byId[id] = entry;
     }
@@ -89,27 +90,29 @@ export class Landmarks {
     this.buildCamp(this.byId.old_camp);
     for (const id of ['rune_wave', 'rune_root', 'rune_flame']) this.buildRune(this.byId[id]);
     this.buildDoor(this.byId.sealed_door);
+    if (this.byId.cave_entrance) this.buildCaveEntrance(this.byId.cave_entrance);
+    if (this.byId.miner_camp) this.buildMinerCamp(this.byId.miner_camp);
 
     for (const entry of this.list) this.registerInteractable(entry);
   }
 
   /** Ağaçların/kaynakların bu noktalara çıkmaması için hariç tutma bölgeleri. */
   exclusionZones() {
-    const r = { wreck: 9, old_camp: 11, rune_wave: 4, rune_root: 4, rune_flame: 4, sealed_door: 9 };
-    const zones = this.list.map((e) => ({ x: e.x, z: e.z, r: r[e.id] ?? 5 }));
+    const r = { wreck: 9, old_camp: 11, rune_wave: 4, rune_root: 4, rune_flame: 4, sealed_door: 9, cave_entrance: 12 };
+    const zones = this.list.filter((e) => !e.cave).map((e) => ({ x: e.x, z: e.z, r: r[e.id] ?? 5 }));
     // enkaz sandıklarının bulunduğu kumsal
     const w = this.byId.wreck;
     if (w) zones.push({ x: w.interactPoint.x, z: w.interactPoint.z, r: 6 });
     return zones;
   }
 
-  staticMesh(parts, x, y, z, yaw = 0, { shadow = true } = {}) {
+  staticMesh(parts, x, y, z, yaw = 0, { shadow = true, group = this.group } = {}) {
     const mesh = new THREE.Mesh(merge(parts), sharedMaterials.standard);
     mesh.position.set(x, y, z);
     mesh.rotation.y = yaw;
     mesh.castShadow = shadow;
     mesh.receiveShadow = true;
-    this.group.add(mesh);
+    group.add(mesh);
     return mesh;
   }
 
@@ -287,15 +290,135 @@ export class Landmarks {
     e.interactPoint = { x: e.x, y: e.y, z: e.z + 1.6 };
   }
 
+  /** Dağın batı yamacındaki kaya kemerli mağara ağzı (içerisi ayrı, kapalı bir alandır). */
+  buildCaveEntrance(e) {
+    const ter = this.world.terrain;
+    const yaw = this.world.island.def.cave?.entrance?.yaw ?? -Math.PI / 2;
+    const rng = mulberry32(8080);
+    const parts = [];
+    const groundAt = (lx, lz) => {
+      const w = this.local(e, yaw, lx, lz);
+      return ter.getHeight(w.x, w.z) - e.y;
+    };
+    const rockCols = ['#7d786f', '#857f76', '#6f6a62', '#8c877e'];
+    const rock = (lx, lz, s, yOff = 0, sy = 1) => {
+      parts.push(part(new THREE.DodecahedronGeometry(1, 0), rockCols[Math.floor(rng() * 4)], {
+        x: lx, y: groundAt(lx, lz) + s * 0.55 * sy + yOff, z: lz, sx: s * randRange(rng, 0.9, 1.2), sy: s * sy, sz: s * randRange(rng, 0.85, 1.1),
+        ry: rng() * 3, jitter: 0.12, seed: 8100 + parts.length, shade: 0.08,
+      }));
+    };
+    // yan sütunlar ve lento
+    rock(-2.9, 0.2, 1.5, 0, 1.2); rock(-3.2, -1.2, 1.7, 0.9, 1.1); rock(-2.6, 0.6, 1.0, 2.0);
+    rock(2.9, 0.2, 1.5, 0, 1.2); rock(3.2, -1.3, 1.8, 0.8, 1.1); rock(2.5, 0.5, 1.0, 2.1);
+    rock(-1.4, 0.1, 1.2, 3.1, 0.8); rock(0.2, 0.0, 1.35, 3.35, 0.75); rock(1.6, 0.2, 1.15, 3.05, 0.8);
+    // arkadaki kaya yığını yamaçla birleşir
+    for (let i = 0; i < 14; i++) {
+      const lx = randRange(rng, -4.6, 4.6);
+      const lz = randRange(rng, -6.5, -1.5);
+      rock(lx, lz, randRange(rng, 1.6, 3.0), randRange(rng, 0.5, 3.2) - Math.max(0, -lz - 3) * 0.2, randRange(rng, 0.8, 1.2));
+    }
+    // eski maden direkleri
+    for (const lx of [-1.95, 1.95]) parts.push(part(new THREE.BoxGeometry(0.22, 2.9, 0.22), '#5f4430', { x: lx, y: 1.4, z: 0.35, rz: lx * 0.02, seed: 8200 }));
+    parts.push(part(new THREE.BoxGeometry(4.4, 0.26, 0.28), '#5f4430', { y: 2.9, z: 0.35, seed: 8201 }));
+    // girişten sarkan sarmaşıklar
+    for (let i = 0; i < 7; i++) {
+      const top = new THREE.Vector3(-1.8 + i * 0.6 + randRange(rng, -0.15, 0.15), 3.45, 0.55);
+      parts.push(...hangingVine(rng, 8300 + i * 11, top, randRange(rng, 0.9, 2.2)));
+    }
+    this.staticMesh(parts, e.x, e.y, e.z, yaw);
+
+    // karanlık tünel ağzı: yarım silindir kemer, derine doğru kararır
+    const arch = new THREE.CylinderGeometry(1.95, 1.95, 3.4, 16, 1, true, -Math.PI / 2, Math.PI);
+    arch.rotateX(-Math.PI / 2);
+    arch.scale(1, 1.4, 1);
+    arch.translate(0, 0, -1.7);
+    const archGeo = arch.toNonIndexed();
+    const apos = archGeo.attributes.position;
+    const col = new Float32Array(apos.count * 3);
+    for (let i = 0; i < apos.count; i++) {
+      const depth = Math.min(1, -apos.getZ(i) / 3.2);
+      const v = 0.2 * (1 - depth) * (1 - depth) + 0.012;
+      col[i * 3] = v; col[i * 3 + 1] = v * 0.96; col[i * 3 + 2] = v * 0.92;
+    }
+    archGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const darkMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide });
+    const archMesh = new THREE.Mesh(archGeo, darkMat);
+    const back = new THREE.Mesh(new THREE.CircleGeometry(1.95, 16, 0, Math.PI), new THREE.MeshBasicMaterial({ color: '#030304' }));
+    back.scale.y = 1.4;
+    back.position.z = -3.35;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 3.4), new THREE.MeshBasicMaterial({ color: '#141210' }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(0, 0.04, -1.7);
+    const mouth = new THREE.Group();
+    mouth.add(archMesh, back, floor);
+    mouth.position.set(e.x, e.y, e.z);
+    mouth.rotation.y = yaw;
+    this.group.add(mouth);
+
+    const col2 = this.world.collision;
+    const c = this.local(e, yaw, 0, -1.6);
+    col2.addBox(c.x, c.z, 2.2, 1.5, yaw, e);
+    for (const lx of [-3.1, 3.1]) {
+      const p = this.local(e, yaw, lx, -0.4);
+      col2.addCircle(p.x, p.z, 1.5, e);
+    }
+    const m = this.local(e, yaw, 0, -4.5);
+    col2.addBox(m.x, m.z, 4.8, 2.4, yaw, e);
+    const ip = this.local(e, yaw, 0, 0.9);
+    e.interactPoint = { x: ip.x, y: e.y, z: ip.z };
+    e.exitPoint = this.local(e, yaw, 0, 4.2);
+    e.yaw = yaw;
+  }
+
+  /** Mağaranın derin odasında, madencinin terk ettiği kamp (mağara katmanında). */
+  buildMinerCamp(e) {
+    const cave = this.world.cave;
+    if (!cave) return;
+    const yAt = (lx, lz) => cave.floorHeight(e.x + lx, e.z + lz) - e.y;
+    const parts = [];
+    // yatak rulosu
+    parts.push(part(new THREE.BoxGeometry(0.9, 0.16, 2.0), '#7a3f36', { x: -1.8, y: yAt(-1.8, 0.5) + 0.08, z: 0.5, ry: 0.3, seed: 8500, shade: 0.05 }));
+    parts.push(part(new THREE.CylinderGeometry(0.2, 0.2, 0.9, 7), '#8e5045', { x: -2.1, y: yAt(-2.1, -0.5) + 0.2, z: -0.4, rz: Math.PI / 2, ry: 0.3, seed: 8501 }));
+    // defterli sandık
+    parts.push(part(new THREE.BoxGeometry(0.9, 0.6, 0.6), '#7a5a38', { y: yAt(0, 0) + 0.3, seed: 8502, shade: 0.05 }));
+    parts.push(part(new THREE.BoxGeometry(0.34, 0.04, 0.26), '#efe2c0', { x: -0.1, y: yAt(0, 0) + 0.62, z: 0.05, ry: 0.25, seed: 8503 }));
+    // fırın başlangıcı: taş halkası ve kömür yığını
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      parts.push(part(new THREE.DodecahedronGeometry(0.24, 0), i % 2 ? '#7d786f' : '#6e6a72', {
+        x: 2.2 + Math.cos(a) * 0.65, y: yAt(2.2, 1.2) + 0.15 + (i % 3 === 0 ? 0.25 : 0), z: 1.2 + Math.sin(a) * 0.65, seed: 8510 + i,
+      }));
+    }
+    for (let i = 0; i < 7; i++) {
+      parts.push(part(new THREE.DodecahedronGeometry(0.14, 0), '#18181b', { x: 2.2 + (i % 3 - 1) * 0.2, y: yAt(2.2, 1.2) + 0.1 + Math.floor(i / 3) * 0.12, z: 1.2 + ((i * 7) % 3 - 1) * 0.15, seed: 8520 + i }));
+    }
+    // cevher yığını ve dayalı kazma
+    for (let i = 0; i < 5; i++) parts.push(part(new THREE.DodecahedronGeometry(0.17, 0), '#b0612c', { x: 1.0 + i * 0.18, y: yAt(1, -1.3) + 0.12 + (i % 2) * 0.1, z: -1.3 + (i % 2) * 0.15, seed: 8530 + i }));
+    parts.push(part(new THREE.CylinderGeometry(0.03, 0.035, 0.9, 5), '#7b5a3a', { x: 0.75, y: yAt(0.75, 0.55) + 0.42, z: 0.55, rz: 0.35, seed: 8540 }));
+    parts.push(part(new THREE.BoxGeometry(0.06, 0.08, 0.5), '#8f8b83', { x: 0.6, y: yAt(0.75, 0.55) + 0.85, z: 0.55, rz: 0.35, seed: 8541 }));
+    this.staticMesh(parts, e.x, e.y, e.z, 0, { group: cave.group, shadow: false });
+
+    // eski fener (parlak) + sıcak ışık
+    const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.24, 0.16), new THREE.MeshBasicMaterial({ color: '#ffc46b', toneMapped: false }));
+    lantern.position.set(e.x + 0.3, e.y + yAt(0.3, -0.1) + 0.74, e.z - 0.1);
+    cave.group.add(lantern);
+    e.light = this.world.lights.add({ x: lantern.position.x, y: lantern.position.y + 0.3, z: lantern.position.z, color: '#ffb35c', intensity: 6, distance: 13, flicker: true });
+
+    this.world.collision.addBox(e.x, e.z, 0.5, 0.35, 0, e, Infinity, 'cave');
+    this.world.collision.addCircle(e.x + 2.2, e.z + 1.2, 0.85, e, 'cave');
+    e.interactPoint = { x: e.x, y: e.y, z: e.z + 0.2 };
+    e.keepLight = true;
+  }
+
   registerInteractable(entry) {
     const ip = entry.interactPoint;
     this.world.addInteractable({
       kind: 'landmark',
       id: entry.id,
       x: ip.x, y: ip.y + 1, z: ip.z,
-      range: entry.id === 'sealed_door' ? 4.5 : 3.2,
-      pickRadius: entry.id === 'sealed_door' ? 2.2 : entry.def.glyph ? 1.0 : 0.85,
-      pickHeight: entry.id === 'sealed_door' ? 3.6 : 1.6,
+      range: entry.id === 'sealed_door' || entry.id === 'cave_entrance' ? 4.5 : 3.2,
+      pickRadius: entry.id === 'sealed_door' ? 2.2 : entry.id === 'cave_entrance' ? 2.0 : entry.def.glyph ? 1.0 : 0.85,
+      pickHeight: entry.id === 'sealed_door' ? 3.6 : entry.id === 'cave_entrance' ? 2.6 : 1.6,
       getPrompt: (game) => game.exploration.landmarkPrompt(entry),
       interact: (game) => game.exploration.interactLandmark(entry),
     });
@@ -305,7 +428,7 @@ export class Landmarks {
     const e = this.byId[id];
     if (!e) return;
     e.used = used;
-    if (e.light) e.light.enabled = !used;
+    if (e.light && !e.keepLight) e.light.enabled = !used;
   }
 
   update(dt) {

@@ -105,6 +105,8 @@ export class DayNightCycle {
     this.fogBase = { near: 70, far: 420 };
     scene.fog = new THREE.Fog(0xbfe6fa, this.fogBase.near, this.fogBase.far);
 
+    this.cave = false;
+    this.caveFog = new THREE.Color('#07080b');
     this.env = {
       hour: 12,
       sunDir: new THREE.Vector3(0, 1, 0),
@@ -149,6 +151,11 @@ export class DayNightCycle {
       this.light.shadow.map?.dispose();
       this.light.shadow.map = null;
     }
+  }
+
+  /** Mağarada: güneş/ay yok, loş mavimsi ortam ışığı ve yakın, koyu sis. */
+  setCaveMode(on) {
+    this.cave = on;
   }
 
   setFogScale(scale) {
@@ -224,6 +231,16 @@ export class DayNightCycle {
     this.stars.rotation.y = hour * 0.02;
 
     const fog = this.scene.fog;
+    if (this.cave) {
+      this.light.intensity = 0;
+      this.hemi.color.set('#6c7896');
+      this.hemi.groundColor.set('#1d1a17');
+      this.hemi.intensity = 0.62;
+      fog.color.copy(this.caveFog);
+      fog.near = 4;
+      fog.far = 46;
+      return;
+    }
     fog.color.copy(env.horizon);
     const nightFog = lerp(1, 0.6, env.nightFactor);
     fog.near = this.fogBase.near * nightFog;

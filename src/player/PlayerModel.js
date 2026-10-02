@@ -8,7 +8,11 @@ const HELD_POSE = {
   pickaxe: { idleArm: -0.15, toolRot: Math.PI / 2 },
   spear: { idleArm: -0.35, toolRot: Math.PI / 2 + 0.2 },
   torch: { idleArm: -0.85, toolRot: 0.85 },
+  knife: { idleArm: -0.3, toolRot: Math.PI / 2 },
+  rod: { idleArm: -0.7, toolRot: 0.9 },
+  paddle: { idleArm: -0.9, toolRot: 0.3 },
 };
+const TAU = Math.PI * 2;
 
 const easeOut = (t) => 1 - (1 - t) * (1 - t);
 const easeIn = (t) => t * t;
@@ -104,6 +108,11 @@ export class PlayerModel {
     this.walkPhase = 0;
     this.time = 0;
     this.swimBlend = 0;
+    this.swimMove = 0;
+    this.swimPhase = 0;
+    this.strokeSide = 1; // son kulacın tarafı (sıçrama efekti için)
+    this.sitBlend = 0;
+    this.rowPhase = 0;
     this.airBlend = 0;
   }
 
@@ -127,7 +136,7 @@ export class PlayerModel {
     this.heldMesh = this.heldCache[key];
     this.heldMesh.rotation.x = HELD_POSE[key]?.toolRot ?? Math.PI / 2;
     this.flame.visible = key === 'torch';
-    this.heldMesh.visible = !this.firstPerson;
+    this.heldMesh.visible = !this.firstPerson && !this.hideHeld;
     this.hand.add(this.heldMesh);
   }
 
@@ -160,7 +169,15 @@ export class PlayerModel {
     const swing = Math.sin(this.walkPhase) * moveAmp * 0.75;
 
     this.swimBlend = damp(this.swimBlend, state.swimming ? 1 : 0, 6, dt);
-    this.airBlend = damp(this.airBlend, !state.grounded && !state.swimming ? 1 : 0, 10, dt);
+    this.swimMove = damp(this.swimMove, state.swimming && speed > 0.6 ? 1 : 0, 4, dt);
+    this.sitBlend = damp(this.sitBlend, state.sitting ? 1 : 0, 8, dt);
+    this.airBlend = damp(this.airBlend, !state.grounded && !state.swimming && !state.sitting ? 1 : 0, 10, dt);
+    // yüzerken eldeki alet görünmez
+    const hide = this.swimBlend > 0.5;
+    if (hide !== this.hideHeld) {
+      this.hideHeld = hide;
+      if (this.heldMesh) this.heldMesh.visible = !this.firstPerson && !hide;
+    }
     const pose = HELD_POSE[this.heldKey] ?? { idleArm: 0 };
 
     // temel yürüyüş
@@ -180,23 +197,73 @@ export class PlayerModel {
     armLz = lerp(armLz, 0.45, this.airBlend);
     armRz = lerp(armRz, -0.45, this.airBlend);
 
-    // yüzme
+    // yüzme: ilerlerken serbest stil (kulaç + çarpraz ayak), dururken su sayma (kollar yanlarda süzülür)
+    let swimArmsDirect = false;
+    let bodyRoll = 0;
+    let headYaw = 0;
+    let headPitch = 0;
     if (this.swimBlend > 0.01) {
-      const s = this.time * 4.5;
-      legL = lerp(legL, Math.sin(s * 1.6) * 0.35, this.swimBlend);
-      legR = lerp(legR, -Math.sin(s * 1.6) * 0.35, this.swimBlend);
-      armL = lerp(armL, -1.6 + Math.sin(s) * 1.1, this.swimBlend);
-      armR = lerp(armR, -1.6 - Math.sin(s) * 1.1, this.swimBlend);
+      const mv = this.swimMove;
+      this.swimPhase += dt * lerp(2.2, 3.4 + Math.min(speed, 3) * 0.35, mv);
+      const ph = this.swimPhase;
+      // serbest stil: kollar sürekli döner (öne uzan → suyun altından çek → sudan çıkarıp öne getir)
+      const crawlL = -Math.PI + (ph % TAU);
+      const crawlR = -Math.PI + ((ph + Math.PI) % TAU);
+      this.strokeSide = (ph % TAU) < Math.PI ? -1 : 1;
+      // su sayma: kollar yanlara açık, sekiz çizerek süzülür
+      const treadArm = -0.75 + Math.sin(ph * 1.6) * 0.22;
+      const treadZ = 0.95 + Math.sin(ph * 1.6 + 1.2) * 0.3;
+      const aL = lerp(treadArm, crawlL, mv);
+      const aR = lerp(treadArm, crawlR, mv);
+      armL = lerp(armL, aL, this.swimBlend);
+      armR = lerp(armR, aR, this.swimBlend);
+      armLz = lerp(armLz, lerp(treadZ, 0.12, mv), this.swimBlend);
+      armRz = lerp(armRz, lerp(-treadZ, -0.12, mv), this.swimBlend);
+      swimArmsDirect = this.swimBlend > 0.9;
+      // ayaklar: hızlı çapraz vuruş / yavaş pedal
+      const kick = mv > 0.5 ? Math.sin(ph * 3.1) * 0.42 : Math.sin(ph * 1.6) * 0.5;
+      legL = lerp(legL, kick, this.swimBlend);
+      legR = lerp(legR, -kick, this.swimBlend);
       bodyX = lerp(bodyX, 0, this.swimBlend);
-      bodyY = lerp(bodyY, 0.15 + Math.sin(s) * 0.04, this.swimBlend);
+      bodyY = lerp(bodyY, lerp(-1.12 + Math.sin(ph * 2) * 0.05, 0.34 + Math.sin(ph * 2) * 0.03, mv), this.swimBlend);
+      bodyRoll = Math.sin(ph) * 0.3 * mv * this.swimBlend;
+      headYaw = Math.sin(ph) * 0.45 * mv * this.swimBlend; // nefes almak için yana dönüş
+      headPitch = -0.95 * mv * this.swimBlend;
     }
-    this.body.rotation.x = this.swimBlend * 1.3;
+    this.body.rotation.x = this.swimBlend * lerp(0.35, 1.38, this.swimMove);
+    this.body.rotation.z = bodyRoll;
+    this.head.rotation.y = damp(this.head.rotation.y, headYaw, 10, dt);
+
+    // oturma (sal/tekne): bacaklar öne uzanır, salda kürek çekilir
+    if (this.sitBlend > 0.01) {
+      const sb = this.sitBlend;
+      legL = lerp(legL, -1.45, sb);
+      legR = lerp(legR, -1.4, sb);
+      bodyY = lerp(bodyY, 0, sb);
+      if (state.rowing > 0.05) {
+        this.rowPhase += dt * (2.2 + state.rowing * 0.6);
+        const r = Math.sin(this.rowPhase);
+        armR = lerp(armR, -1.25 + r * 0.55, sb);
+        armL = lerp(armL, -1.1 - r * 0.45, sb);
+        armRz = lerp(armRz, -0.25, sb);
+        armLz = lerp(armLz, 0.55, sb);
+        bodyX = lerp(bodyX, 0.12 + r * 0.12, sb);
+      } else if (state.steering) {
+        armR = lerp(armR, -0.55, sb);
+        armRz = lerp(armRz, 0.1, sb);
+        armL = lerp(armL, -0.3, sb);
+      } else {
+        armL = lerp(armL, -0.35, sb);
+        armR = lerp(armR, -0.35 + (HELD_POSE[this.heldKey]?.idleArm ?? 0) * 0.5, sb);
+      }
+    }
 
     // eylem animasyonları
     const act = state.action;
     let crouch = 0;
     if (act) {
       const k = act.k;
+      headPitch = 0;
       const bell = Math.sin(Math.PI * clamp(k, 0, 1));
       switch (act.type) {
         case 'swing':
@@ -219,6 +286,12 @@ export class PlayerModel {
           armL = -1.2 + Math.sin(k * 18) * 0.25 * crouch;
           armR = -1.2 - Math.sin(k * 18) * 0.25 * crouch;
           break;
+        case 'butcher':
+          // diz çök, bıçakla kes
+          crouch = Math.min(1, k * 5, (1 - k) * 5);
+          armR = -1.0 + Math.sin(k * 26) * 0.35 * crouch;
+          armL = lerp(armL, -1.2, crouch);
+          break;
         case 'eat':
           armR = lerp(armR, -2.1, bell);
           armRz = lerp(armRz, 0.55, bell);
@@ -235,7 +308,7 @@ export class PlayerModel {
           break;
       }
     } else {
-      this.head.rotation.x = damp(this.head.rotation.x, 0, 10, dt);
+      this.head.rotation.x = damp(this.head.rotation.x, headPitch, 10, dt);
     }
 
     if (crouch > 0) {
@@ -248,8 +321,8 @@ export class PlayerModel {
     const k = 18;
     this.legL.rotation.x = damp(this.legL.rotation.x, legL, k, dt);
     this.legR.rotation.x = damp(this.legR.rotation.x, legR, k, dt);
-    this.armL.rotation.x = damp(this.armL.rotation.x, armL, act ? 30 : k, dt);
-    this.armR.rotation.x = act ? armR : damp(this.armR.rotation.x, armR, k, dt);
+    this.armL.rotation.x = swimArmsDirect ? armL : damp(this.armL.rotation.x, armL, act ? 30 : k, dt);
+    this.armR.rotation.x = act || swimArmsDirect ? armR : damp(this.armR.rotation.x, armR, k, dt);
     this.armL.rotation.z = damp(this.armL.rotation.z, armLz, k, dt);
     this.armR.rotation.z = damp(this.armR.rotation.z, armRz, k, dt);
     this.body.position.y = damp(this.body.position.y, bodyY, 14, dt);

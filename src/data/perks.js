@@ -34,7 +34,7 @@ export const PERKS = {
   },
   warrior: {
     name: 'Savaşçı', icon: '⚔️', maxRank: 5,
-    desc: 'Saldırı hasarı +%10. (Savaş sistemiyle birlikte önem kazanacak.)',
+    desc: 'Avlanırken (ve ileride savaşta) verilen hasar +%10.',
     effect: { damage: 0.1 },
   },
   craftsman: {
