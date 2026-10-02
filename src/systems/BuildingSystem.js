@@ -109,6 +109,8 @@ export class BuildingSystem {
     this.cancel();
     this.active = true;
     this.type = type;
+    // modu açan tıklama (ör. tekneyi sağ tıkla suya indirme) aynı karede "iptal/yerleştir" sayılmasın
+    this.inputGrace = true;
     this.ghost = new THREE.Mesh(this.geometry(type), this.ghostOk);
     this.ghost.renderOrder = 5;
     g.scene.add(this.ghost, this.outline);
@@ -312,6 +314,10 @@ export class BuildingSystem {
     this.ghost.material = check.valid ? this.ghostOk : this.ghostBad;
     this.updateOutline(check.rect, check.valid);
 
+    if (this.inputGrace) {
+      this.inputGrace = false;
+      return;
+    }
     if (!inputEnabled) return;
     if (input.wasPressed('secondary')) {
       this.cancel();

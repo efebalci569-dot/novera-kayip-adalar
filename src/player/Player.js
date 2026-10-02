@@ -59,11 +59,22 @@ export class Player {
     return this.model.heldKey === 'torch';
   }
 
-  selectSlot(i) {
-    if (i < 0 || i >= HOTBAR_SIZE) return;
+  /**
+   * Hızlı slot seçer. -1 = boş el. toggle: seçili slotun tuşuna tekrar basılınca el boşalır.
+   */
+  selectSlot(i, { toggle = false } = {}) {
+    if (i < -1 || i >= HOTBAR_SIZE) return;
+    if (toggle && i === this.selectedSlot) i = -1;
     this.selectedSlot = i;
     this.refreshHeld();
     this.game.bus.emit('hotbar:selected', { index: i });
+  }
+
+  /** Fare tekerleği: sonraki/önceki hızlı slot (boş eldeyken ilk/son slota geçer). */
+  cycleSlot(dir) {
+    const n = HOTBAR_SIZE;
+    const cur = this.selectedSlot;
+    this.selectSlot(cur < 0 ? (dir > 0 ? 0 : n - 1) : (cur + dir + n) % n);
   }
 
   refreshHeld() {

@@ -517,6 +517,13 @@ export class PlayerModel {
           bodyX += k > 0.45 && k < 0.75 ? 0.22 : 0.05;
           break;
         }
+        case 'punch': {
+          const ext = k < 0.45 ? easeIn(k / 0.45) : 1 - easeOut((k - 0.45) / 0.55);
+          armR = lerp(pose.idleArm, -1.55, ext);
+          armL = lerp(armL, -0.7, bell * 0.6);
+          bodyX += 0.12 * ext;
+          break;
+        }
         case 'gather':
           crouch = bell;
           armL = lerp(armL, -1.15, bell);

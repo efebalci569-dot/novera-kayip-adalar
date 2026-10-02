@@ -1,11 +1,17 @@
 import * as THREE from 'three';
 import { ITEMS } from '../data/items.js';
+import { HOTBAR_SIZE } from '../data/progression.js';
 import { rollDrops } from './LootSystem.js';
 
-const TOOL_NAMES = { axe: 'Balta', pickaxe: 'Kazma', spear: 'Mızrak', knife: 'Bıçak' };
+const TOOL_NAMES = { axe: 'Balta', pickaxe: 'Kazma', spear: 'Mızrak', knife: 'Bıçak', rod: 'Olta' };
+// uyarı cümleleri için: "baltanı eline al", "bir balta gerekiyor"
+const TOOL_ACC = { axe: 'baltanı', pickaxe: 'kazmanı', spear: 'mızrağını', knife: 'bıçağını', rod: 'oltanı' };
+const TOOL_INDEF = { axe: 'bir balta', pickaxe: 'bir kazma', spear: 'bir mızrak', knife: 'bir bıçak', rod: 'bir olta' };
 const TIER_NAMES = { 2: 'Bakır Kazma' };
 const SWING_TIME = 0.55;
 const SWING_IMPACT = 0.33;
+const PUNCH_TIME = 0.42;
+const PUNCH_IMPACT = 0.19;
 const FIST_DAMAGE = 3;
 const ATTACK_REACH = 2.6;
 const MAX_DY = 5; // hedefle oyuncu arasındaki en büyük yükseklik farkı (mağara/yüzey ayrımı)
@@ -40,7 +46,7 @@ export class InteractionSystem {
         ? { kind: 'dismount', x: b.x, y: b.y, z: b.z, prompt: { action: 'İn', name: b.def.name, note: 'Kıyıya yakınsan karaya çıkarsın' } }
         : null;
       if (!inputEnabled) return;
-      for (let i = 1; i <= 5; i++) if (input.wasPressed(`hotbar${i}`)) player.selectSlot(i - 1);
+      this.handleHotbar(input);
       if (input.wasPressed('interact')) game.vehicles.dismount();
       else if (input.wasPressed('secondary')) this.useSelected();
       return;
@@ -49,7 +55,7 @@ export class InteractionSystem {
     this.target = game.state.mode === 'playing' && !game.building.active ? this.findTarget() : null;
     if (!inputEnabled) return;
 
-    for (let i = 1; i <= 5; i++) if (input.wasPressed(`hotbar${i}`)) player.selectSlot(i - 1);
+    this.handleHotbar(input);
     if (game.building.active) return;
 
     if (input.wasPressed('secondary')) this.useSelected();
@@ -62,25 +68,74 @@ export class InteractionSystem {
     if (t && (pressed || (held && repeatable))) {
       this.perform(t);
     } else if (!t && input.wasPressed('primary')) {
-      // boşa sallama
-      const w = this.bestWeapon();
-      player.startAction('swing', 0.5, { held: w?.def.held ?? player.model.heldKey ?? null });
-      game.audio.play('swing');
+      if (player.selectedItem?.vehicle) {
+        // elde sal/tekne varken sol tık: suya indirme modunu aç
+        this.useSelected();
+        return;
+      }
+      // boşa vuruş: eldeki eşyayla sallar, el boşsa yumruk atar (envanterden eşya çekilmez)
+      if (player.selectedItem) player.startAction('swing', 0.5);
+      else player.startAction('punch', PUNCH_TIME);
+      game.audio.play('swing', { volume: player.selectedItem ? 1 : 0.6 });
     }
   }
 
-  /** Saldırı silahı: elindeki hasar veren eşya; yoksa envanterdeki en yüksek hasarlısı; yoksa yumruk (null). */
-  bestWeapon() {
-    const inv = this.game.player.inventory;
-    const sel = this.game.player.selectedSlot;
-    const selDef = inv.slots[sel] && ITEMS[inv.slots[sel].id];
-    if (selDef?.damage) return { index: sel, def: selDef };
-    let best = null;
-    inv.slots.forEach((st, i) => {
-      const d = st && ITEMS[st.id];
-      if (d?.damage && (!best || d.damage > best.def.damage)) best = { index: i, def: d };
-    });
-    return best;
+  /** 1–5 tuşları (aynı tuşa tekrar basınca el boşalır) ve 1. şahısta fare tekerleği. */
+  handleHotbar(input) {
+    const player = this.game.player;
+    for (let i = 1; i <= HOTBAR_SIZE; i++) {
+      if (input.wasPressed(`hotbar${i}`)) player.selectSlot(i - 1, { toggle: true });
+    }
+    if (input.wheel && this.game.cameraController.firstPerson && !player.action && !this.game.building.active) {
+      player.cycleSlot(Math.sign(input.wheel));
+    }
+  }
+
+  /** Saldırı silahı: yalnızca elde tutulan hasar veren eşya; yoksa yumruk (null). */
+  heldWeapon() {
+    const p = this.game.player;
+    const def = p.selectedItem;
+    return def?.damage ? { index: p.selectedSlot, def } : null;
+  }
+
+  /**
+   * Bir iş için doğru alet elde mi? { ok, index } ya da { ok: false, note, msg }.
+   * note: [E] ipucunun altındaki kısa metin, msg: denenince çıkan uyarı.
+   */
+  toolCheck(type, minTier = 0) {
+    const p = this.game.player;
+    const inv = p.inventory;
+    const held = p.selectedItem;
+    const need = (minTier > 1 && TIER_NAMES[minTier]) || TOOL_NAMES[type] || 'Alet';
+    if (held?.tool?.type === type) {
+      if ((held.tool.tier ?? 0) >= minTier) return { ok: true, index: p.selectedSlot };
+      return { ok: false, note: `${need} gerekli`, msg: `Bu çok sert: ${need} gerekiyor — elindeki ${held.name} yetmez.` };
+    }
+    const acc = minTier > 1 ? `${need} aletini` : TOOL_ACC[type] ?? 'aleti';
+    const holding = held ? `Elinde ${held.name} var. ` : '';
+    const best = inv.findBestTool(type, minTier);
+    if (best >= 0 && best < HOTBAR_SIZE) {
+      const key = best + 1;
+      return {
+        ok: false,
+        note: held ? `Elinde ${held.name} — ${acc} al [${key}]` : `${acc[0].toLocaleUpperCase('tr')}${acc.slice(1)} eline al [${key}]`,
+        msg: `${holding}Bunun için ${acc} eline al: [${key}] tuşuna bas.`,
+      };
+    }
+    if (best >= 0) {
+      return {
+        ok: false,
+        note: `${need} çantada — hızlı slota taşı`,
+        msg: `${holding}${need} çantanda: envanterde (I) hızlı slota (1–5) sürükle ve eline al.`,
+      };
+    }
+    const indef = minTier > 1 ? need : TOOL_INDEF[type] ?? 'uygun bir alet';
+    return {
+      ok: false,
+      none: true,
+      note: `${need} gerekli`,
+      msg: held ? `${held.name} ile olmaz — ${indef} gerekiyor.` : `Bunun için ${indef} gerekiyor.`,
+    };
   }
 
   // ── Hedef seçimi ────────────────────────────────────────
@@ -260,9 +315,10 @@ export class InteractionSystem {
       const prompt = { action: def.action, name: def.name };
       if (def.mode === 'hit') {
         prompt.hp = t.node.hp / t.node.maxHp;
-        if (game.player.inventory.findBestTool(def.tool, def.minTier ?? 0) < 0) {
+        const chk = this.toolCheck(def.tool, def.minTier ?? 0);
+        if (!chk.ok) {
           prompt.disabled = true;
-          prompt.note = `${(def.minTier && TIER_NAMES[def.minTier]) || TOOL_NAMES[def.tool] || def.tool} gerekli`;
+          prompt.note = chk.note;
         }
       } else if (t.node.maxUses > 1) {
         prompt.uses = `${t.node.uses}/${t.node.maxUses}`;
@@ -273,10 +329,10 @@ export class InteractionSystem {
       const a = t.animal;
       if (!a.dead) return { action: 'Saldır', name: a.def.name, hp: a.hp / a.def.hp };
       if (a.butchered) return null;
-      const knife = game.player.inventory.findBestTool('knife') >= 0;
+      const chk = this.toolCheck('knife');
       return {
         action: a.def.butcherAction ?? 'Parçala', name: `${a.def.name} (ölü)`,
-        disabled: !knife, note: knife ? undefined : 'Bıçak gerekli — Üretim [C] → Taş Bıçak',
+        disabled: !chk.ok, note: chk.ok ? undefined : chk.none ? 'Bıçak gerekli — Üretim [C] → Taş Bıçak' : chk.note,
       };
     }
     if (t.kind === 'enemy') return { action: 'Saldır', name: t.enemy.def.name, hp: t.enemy.hp / t.enemy.maxHp };
@@ -324,19 +380,17 @@ export class InteractionSystem {
     const { game } = this;
     const player = game.player;
     const def = node.def;
-    const toolIdx = player.inventory.findBestTool(def.tool, def.minTier ?? 0);
-    if (toolIdx < 0) {
-      if (def.minTier && player.inventory.findBestTool(def.tool) >= 0) this.error(`Bu kaya çok sert: ${TIER_NAMES[def.minTier] ?? 'daha güçlü bir alet'} gerekiyor.`);
-      else this.error(`Bunun için bir ${TOOL_NAMES[def.tool]?.toLowerCase() ?? 'alet'} gerekiyor.`);
+    // yalnızca eldeki alet kullanılır; yanlış alet ya da boş elde ne yapılacağı söylenir
+    const chk = this.toolCheck(def.tool, def.minTier ?? 0);
+    if (!chk.ok) {
+      this.error(chk.msg);
       return;
     }
-    const toolItem = ITEMS[player.inventory.slots[toolIdx].id];
     const tired = player.stats.stamina < 3;
     const speed = tired ? 1.4 : 1;
     player.startAction('swing', SWING_TIME * speed, {
       impactAt: SWING_IMPACT * speed,
       target: node,
-      held: toolItem.held,
       onImpact: () => this.applyHit(node, def.tool, def.minTier ?? 0),
     });
     game.audio.play('swing');
@@ -347,13 +401,14 @@ export class InteractionSystem {
   startAttack(t) {
     const { game } = this;
     const player = game.player;
-    const weapon = this.bestWeapon();
+    const weapon = this.heldWeapon();
     const tired = player.stats.stamina < 3;
-    const speed = tired ? 1.4 : weapon ? 1 : 0.85;
-    player.startAction('swing', SWING_TIME * speed, {
-      impactAt: SWING_IMPACT * speed,
+    const speed = tired ? 1.4 : 1;
+    // elde bir şey varsa onunla vurur, el boşsa yumruk
+    const punch = !player.selectedItem;
+    player.startAction(punch ? 'punch' : 'swing', (punch ? PUNCH_TIME : SWING_TIME) * speed, {
+      impactAt: (punch ? PUNCH_IMPACT : SWING_IMPACT) * speed,
       target: t.animal ?? t.enemy ?? t.boss,
-      held: weapon?.def.held ?? null,
       onImpact: () => this.applyAttack(t, weapon),
     });
     game.audio.play('swing');
@@ -411,18 +466,18 @@ export class InteractionSystem {
   startButcher(a) {
     const { game } = this;
     const player = game.player;
-    const idx = player.inventory.findBestTool('knife');
-    if (idx < 0) {
-      this.error('Hayvanı parçalamak için bir bıçak gerekiyor. (Üretim → Taş Bıçak)');
+    const chk = this.toolCheck('knife');
+    if (!chk.ok) {
+      this.error(chk.none ? 'Hayvanı parçalamak için bir bıçak gerekiyor. (Üretim → Taş Bıçak)' : chk.msg);
       return;
     }
     player.startAction('butcher', 1.5, {
       target: a,
-      held: 'knife',
       onComplete: () => {
         if (a.butchered) return;
-        const i = player.inventory.findBestTool('knife');
-        if (i < 0) return;
+        const now = this.toolCheck('knife');
+        if (!now.ok) return;
+        const i = now.index;
         game.animals.butcher(a);
         const gone = player.inventory.wear(i, 2 * (1 - game.progression.bonus('durability')));
         if (gone) game.notify(`${ITEMS[gone].name} kırıldı!`, 'warn');
@@ -436,8 +491,9 @@ export class InteractionSystem {
     if (!node.interactable) return;
     const player = game.player;
     const inv = player.inventory;
-    const toolIdx = inv.findBestTool(toolType, minTier);
-    if (toolIdx < 0) return;
+    const chk = this.toolCheck(toolType, minTier); // vuruş sırasında alet değiştirildiyse boşa gider
+    if (!chk.ok) return;
+    const toolIdx = chk.index;
     const tool = ITEMS[inv.slots[toolIdx].id].tool;
     const def = node.def;
     const prog = game.progression;
@@ -499,8 +555,10 @@ export class InteractionSystem {
     const depleted = game.world.resources.consumeUse(node);
     const drops = rollDrops(def.drops, game.progression.bonus('extraYield'));
     for (const [toolType, table] of Object.entries(def.toolBonus ?? {})) {
-      const idx = inv.findBestTool(toolType);
-      if (idx < 0) continue;
+      // bonus yalnızca alet eldeyken (ör. olta elde → ekstra balık)
+      const chk = this.toolCheck(toolType);
+      if (!chk.ok) continue;
+      const idx = chk.index;
       drops.push(...rollDrops(table));
       if (toolType === 'rod') {
         const gone = inv.wear(idx, 1 - game.progression.bonus('durability'));

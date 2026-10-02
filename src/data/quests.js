@@ -88,7 +88,7 @@ export const QUESTS = {
   q_tree: {
     type: 'tutorial', title: 'Ağaç Kes',
     desc: 'Artık bir baltan var. Ağaçlar çok daha fazla odun verir.',
-    hint: 'Bir ağaca yaklaş, [E] veya sol tık ile vur. Basılı tutarsan vurmaya devam edersin.',
+    hint: 'Baltayı eline al (1–5 ya da fare tekerleği), ağaca nişan al ve [E] / sol tık ile vur. Basılı tutarsan vurmaya devam edersin.',
     objectives: [{ type: 'fell', group: 'tree', amount: 1, label: 'Bir ağaç kes' }],
     marker: { resource: 'palm_tree' },
     rewards: { xp: 40, recipes: ['stone_pickaxe', 'stone_knife'] },
@@ -147,7 +147,7 @@ export const QUESTS = {
   q_hunt: {
     type: 'main', title: 'Av Zamanı',
     desc: 'Çayırlarda otlayan inekler, koyunlar ve tavuklar var. Et, deri, yün ve tüy hayatta kalmanın anahtarı olacak.',
-    hint: 'Taş Bıçak üret. Bir hayvanı avla (sol tık), sonra bıçakla [E] parçala. Pişirmek için kamp ateşini kullan.',
+    hint: 'Taş Bıçak üret ve eline al. Bir hayvanı avla (sol tık), sonra bıçak elindeyken [E] ile parçala. Pişirmek için kamp ateşini kullan.',
     objectives: [
       { type: 'craft', item: 'stone_knife', amount: 1, label: 'Taş Bıçak üret' },
       { type: 'kill', amount: 1, label: 'Bir hayvan avla', marker: { animal: true } },
@@ -236,7 +236,7 @@ export const QUESTS = {
   q_cave_ore: {
     type: 'main', title: 'Demir Damarı',
     desc: 'Mağara duvarlarında koyu, paslı damarlar var. Demir! Ve yanında kömür.',
-    hint: 'Kazmanla demir ve kömür damarlarını kaz.',
+    hint: 'Kazmanı eline al ve demir ile kömür damarlarını kaz.',
     objectives: [
       { type: 'collect', item: 'iron_ore', amount: 4, label: 'Demir cevheri topla', marker: { resource: 'iron_ore' } },
       { type: 'collect', item: 'coal', amount: 4, label: 'Kömür topla', marker: { resource: 'coal_ore' } },

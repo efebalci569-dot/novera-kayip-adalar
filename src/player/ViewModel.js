@@ -158,6 +158,17 @@ export class ViewModel {
           }
           break;
         }
+        case 'punch': {
+          // hızlı ileri yumruk: kol ekranın ortasına doğru uzanır ve geri çekilir
+          const ext = k < 0.45 ? easeIn(k / 0.45) : 1 - easeOut((k - 0.45) / 0.55);
+          t.z -= 0.3 * ext;
+          t.x -= 0.15 * ext;
+          t.y += 0.11 * ext;
+          t.rx = lerp(REST.rx, -0.05, ext);
+          t.ry = lerp(REST.ry, 0.28, ext);
+          t.rz = lerp(REST.rz, 0, ext);
+          break;
+        }
         case 'butcher':
           t.y -= 0.22 * bell;
           t.z -= 0.18 * bell;

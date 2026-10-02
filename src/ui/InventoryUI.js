@@ -213,7 +213,7 @@ export class InventoryUI extends Panel {
     const g = this.game;
     const inv = g.player.inventory;
     let target = inv.slots.findIndex((s, idx) => idx < HOTBAR_SIZE && !s);
-    if (target < 0) target = g.player.selectedSlot;
+    if (target < 0) target = Math.max(0, g.player.selectedSlot);
     Inventory.move(inv, i, inv, target);
     this.selected = target;
     g.audio.play('click');
