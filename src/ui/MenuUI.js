@@ -409,7 +409,13 @@ export class MenuUI {
         h('div', { class: 'inv-note' }, 'Düşük: gölgeler kapalı, daha az çim. Yüksek: keskin gölgeler ve tam çözünürlük.'),
       ];
     } else {
+      const touchSeg = h('div', { class: 'seg' }, [['auto', 'Otomatik'], ['on', 'Açık'], ['off', 'Kapalı']].map(([id, label]) => h('button', {
+        class: s.touchControls === id ? 'active' : '',
+        onclick: () => { s.set('touchControls', id); this.showSettings(from); },
+      }, label)));
       content = [
+        h('div', { class: 'setting' }, h('span', {}, 'Dokunmatik kontroller'), touchSeg),
+        slider('Dokunmatik bakış hassasiyeti', 'touchSensitivity', 0.3, 3, 0.05, (v) => `${v.toFixed(2)}×`),
         slider('Fare hassasiyeti', 'sensitivity', 0.2, 3, 0.05, (v) => `${v.toFixed(2)}×`),
         toggle('Fareyi ters çevir (Y)', 'invertY'),
         h('button', { class: 'btn small', style: { marginTop: '12px' }, onclick: () => this.showControls(from, true) }, '⌨ Tuş atamalarını düzenle'),

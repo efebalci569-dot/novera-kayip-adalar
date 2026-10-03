@@ -50,6 +50,7 @@ export class InventoryUI extends Panel {
   constructor(game) {
     super(game, 'inventory', { title: 'Envanter', icon: '🎒', action: 'inventory' });
     this.selected = -1;
+    this.moving = -1; // "Taşı" ile seçilen slot: sıradaki dokunuş onu oraya taşır (dokunmatikte sürükleme yerine)
     this.confirmDrop = false;
     game.bus.on('inventory:changed', ({ inventory }) => {
       if (inventory === game.player.inventory) this.refresh();
@@ -58,6 +59,7 @@ export class InventoryUI extends Panel {
 
   open(ctx) {
     this.selected = -1;
+    this.moving = -1;
     super.open(ctx);
   }
 
@@ -70,6 +72,13 @@ export class InventoryUI extends Panel {
       selectedIndex: this.selected,
       showLocked: locked,
       onClick: (i) => {
+        if (this.moving >= 0) {
+          if (i !== this.moving) {
+            Inventory.move(inv, this.moving, inv, i);
+            g.audio.play('click');
+          }
+          this.moving = -1;
+        }
         this.selected = inv.slots[i] ? i : -1;
         this.confirmDrop = false;
         this.render();
@@ -100,7 +109,11 @@ export class InventoryUI extends Panel {
       h('div', {},
         h('div', { class: 'section-title' }, `Eşyalar (${inv.slots.filter(Boolean).length}/${inv.size})`),
         grid,
-        h('div', { class: 'inv-note' }, 'İlk 5 slot hızlı slotlarındır (1–5 tuşları). Sürükleyerek yer değiştir, sağ tık ile hızlı kullan.'),
+        h('div', { class: `inv-note ${this.moving >= 0 ? 'moving' : ''}` }, this.moving >= 0
+          ? '↔ Taşımak için hedef slota dokun (aynı slota dokunursan vazgeçersin).'
+          : g.settings.touchEnabled
+            ? 'İlk 5 slot hızlı slotlarındır. Bir eşyaya dokun; “Taşı” ile yerini değiştir.'
+            : 'İlk 5 slot hızlı slotlarındır (1–5 tuşları). Sürükleyerek yer değiştir, sağ tık ile hızlı kullan.'),
         h('div', { class: 'section-title', style: { marginTop: '18px' } }, `Karakter · Seviye ${p.level}`),
         charStats,
         armorRow,
@@ -145,6 +158,10 @@ export class InventoryUI extends Panel {
     } else {
       actions.push(h('button', { class: 'btn small', onclick: () => { g.player.selectSlot(this.selected); this.render(); } }, 'Eline al'));
     }
+    actions.push(h('button', {
+      class: `btn small ${this.moving === this.selected ? 'primary' : ''}`,
+      onclick: () => { this.moving = this.moving === this.selected ? -1 : this.selected; this.render(); },
+    }, '↔ Taşı'));
     actions.push(h('button', {
       class: 'btn small danger',
       onclick: () => {

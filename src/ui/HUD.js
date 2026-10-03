@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { h, kbd, renderSlot, itemChip } from './dom.js';
 import { setRich, plainText } from './rich.js';
+import { forInput } from './touchText.js';
 import { ITEMS } from '../data/items.js';
 import { QUESTS, QUEST_TYPES } from '../data/quests.js';
 import { RECIPE_MAP } from '../data/recipes.js';
@@ -260,6 +261,13 @@ export class HUD {
     this.hotbar = h('div', { class: 'hotbar' });
     for (let i = 0; i < HOTBAR_SIZE; i++) {
       const s = h('div', { class: 'slot' });
+      // dokunmatikte slota dokununca seçilir; seçiliyken tekrar dokununca el boşalır
+      s.addEventListener('pointerdown', (e) => {
+        if (!this.game.settings.touchEnabled || this.game.state.mode !== 'playing') return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.game.player.selectSlot(i, { toggle: true });
+      });
       this.hotbarSlots.push(s);
       this.hotbar.append(s);
     }
@@ -395,7 +403,7 @@ export class HUD {
         const count = o.type === 'walk' || o.type === 'sail' ? `${cur}/${target} m` : target > 1 ? `${cur}/${target}` : done ? '✓' : '';
         item.append(h('div', { class: `qt-obj ${done ? 'done' : ''}` }, h('span', {}, `${done ? '✔' : '○'} ${o.label}`), h('span', { class: 'count' }, count)));
       });
-      if (quest.hint && quest.type !== 'side') item.append(h('div', { class: 'qt-hint' }, `💡 ${quest.hint}`));
+      if (quest.hint && quest.type !== 'side') item.append(h('div', { class: 'qt-hint' }, `💡 ${forInput(this.game, quest.hint)}`));
       this.tracker.append(item);
     }
     if (!list.length && this.game.quests.isCompleted('q_sealed_door')) {
@@ -408,7 +416,7 @@ export class HUD {
   }
 
   toast(text, type = 'info', duration = 3600) {
-    const t = h('div', { class: `toast ${type}` }, text);
+    const t = h('div', { class: `toast ${type}` }, forInput(this.game, text));
     this.toasts.append(t);
     while (this.toasts.children.length > 4) this.toasts.firstChild.remove();
     setTimeout(() => {
@@ -429,7 +437,7 @@ export class HUD {
       h('div', { class: 'b-kicker' }, b.kicker),
       h('div', { class: 'b-title' }, b.title),
       h('div', { class: 'b-line' }),
-      b.sub ? h('div', { class: 'b-sub' }, b.sub) : null,
+      b.sub ? h('div', { class: 'b-sub' }, forInput(this.game, b.sub)) : null,
     );
     this.el.append(this.bannerEl);
     this.bannerTimer = b.duration;
@@ -621,7 +629,7 @@ export class HUD {
       this.promptSig = sig;
       this.promptMain.replaceChildren(kbd(g.settings.bindings.interact?.[0]), ` ${pr.action}`, h('span', { style: { color: '#a9b4b8', fontWeight: 500 } }, ` — ${pr.name}${pr.uses ? ` (${pr.uses})` : ''}`));
       this.promptMain.classList.toggle('disabled', !!pr.disabled);
-      setRich(this.promptNote, pr.note ?? '');
+      setRich(this.promptNote, forInput(g, pr.note ?? ''));
       this.promptNote.classList.toggle('hidden', !pr.note);
     }
     const hasHp = pr.hp !== undefined && pr.hp < 1;

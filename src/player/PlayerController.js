@@ -49,6 +49,8 @@ export class PlayerController {
       if (input.isDown('right')) s += 1;
       if (input.isDown('left')) s -= 1;
       if (input.isDown('jump')) u += 1;
+      f += input.axis.y;
+      s += input.axis.x;
     }
     const cp = Math.cos(cam.lookPitch);
     const fx = -Math.sin(cam.yaw) * cp, fy = Math.sin(cam.lookPitch), fz = -Math.cos(cam.yaw) * cp;
@@ -109,8 +111,12 @@ export class PlayerController {
       if (input.isDown('backward')) mz -= 1;
       if (input.isDown('right')) mx += 1;
       if (input.isDown('left')) mx -= 1;
+      mx += input.axis.x; // dokunmatik joystick
+      mz += input.axis.y;
     }
     const len = Math.hypot(mx, mz);
+    // joystick az itilince yavaş yürür (klavyede her zaman tam hız)
+    const analog = len > 0 ? Math.max(0.3, Math.min(1, len)) : 1;
     let dirX = 0;
     let dirZ = 0;
     if (len > 0) {
@@ -127,7 +133,7 @@ export class PlayerController {
     if (player.swimming) speed = SWIM_SPEED;
     else if (player.wading) speed *= 0.8;
     if (player.action) speed *= 0.45;
-    speed *= stats.speedMultiplier;
+    speed *= stats.speedMultiplier * analog;
 
     const accel = player.grounded || player.swimming ? 12 : 3.5;
     player.velocity.x = damp(player.velocity.x, dirX * speed, accel, dt);

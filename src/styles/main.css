@@ -30,6 +30,11 @@ html, body {
   font-family: var(--font);
   user-select: none;
   -webkit-user-select: none;
+  /* mobil: çekip yenileme, uzun basış menüsü ve çift dokunma yakınlaştırması kapalı */
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 #app { position: fixed; inset: 0; }
@@ -530,4 +535,210 @@ button { font-family: inherit; }
   .char-body, .mp-cols { grid-template-columns: 1fr; }
   .char-stage { height: 300px; }
   .chat { width: 300px; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   Mobil ve tablet (body.touch): joystick, dokunmatik düğmeler, küçük ekran düzeni
+   ══════════════════════════════════════════════════════════ */
+:root {
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+/* katman sırası: dokunmatik yüzey < HUD (yalnızca slotlar dokunulabilir) < paneller < menüler */
+.touch-layer { position: absolute; inset: 0; z-index: 1; }
+.touch .hud { z-index: 2; }
+.fade { z-index: 4; }
+.panel-layer { z-index: 5; }
+.menu-layer { z-index: 6; }
+
+.touch-surface { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
+
+/* parmağın değdiği yerde beliren joystick */
+.joy-base { position: fixed; left: 0; top: 0; width: 124px; height: 124px; margin: -62px 0 0 -62px; border-radius: 50%; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.32); box-shadow: inset 0 0 18px rgba(0,0,0,0.25); pointer-events: none; }
+.joy-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255,255,255,0.42); border: 2px solid rgba(255,255,255,0.75); box-shadow: 0 2px 10px rgba(0,0,0,0.35); }
+.joy-hint { position: absolute; left: calc(34px + var(--safe-l)); bottom: calc(34px + var(--safe-b)); width: 112px; height: 112px; border-radius: 50%; border: 2px dashed rgba(255,255,255,0.22); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.5); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; pointer-events: none; transition: opacity 0.2s; }
+.touch-layer.joy-active .joy-hint { opacity: 0; }
+
+/* dokunmatik düğmeler */
+.tbtn { position: absolute; pointer-events: auto; touch-action: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 0; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: rgba(10,18,22,0.45); color: #fff; font-family: var(--font); font-weight: 800; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); box-shadow: 0 4px 14px rgba(0,0,0,0.3); transition: transform 0.08s, background 0.12s, border-color 0.12s; }
+.tbtn.down { transform: scale(0.9); background: rgba(255,200,87,0.38); border-color: var(--accent); }
+.tbtn.on { background: rgba(125,220,114,0.35); border-color: var(--ok); }
+.tbtn.dim { opacity: 0.45; }
+.tbtn .tb-icon { font-size: 22px; line-height: 1; }
+.tbtn .tb-label { font-size: 10px; line-height: 1.1; max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
+
+.touch-cluster { position: absolute; right: calc(16px + var(--safe-r)); bottom: calc(16px + var(--safe-b)); width: 262px; height: 214px; pointer-events: none; transform-origin: bottom right; }
+.tb-action { right: 0; bottom: 0; width: 100px; height: 100px; border-color: rgba(255,200,87,0.65); background: rgba(40,30,8,0.45); }
+.tb-action .tb-icon { font-size: 30px; }
+.tb-action .tb-label { font-size: 12px; }
+.tb-jump { right: 112px; bottom: 4px; width: 66px; height: 66px; }
+.tb-use { right: 16px; bottom: 112px; width: 64px; height: 64px; }
+.tb-run { right: 104px; bottom: 86px; width: 56px; height: 56px; }
+.tb-rotate { right: 186px; bottom: 32px; width: 58px; height: 58px; }
+
+/* üst çubuk: menüler */
+.touch-bar { position: absolute; top: calc(8px + var(--safe-t)); left: 50%; transform: translateX(-50%); display: flex; gap: 6px; pointer-events: none; }
+.touch-bar .tbtn { position: static; width: 44px; height: 44px; border-radius: 12px; }
+.touch-bar .tbtn .tb-icon { font-size: 20px; }
+.touch-bar .tb-label { display: none; }
+.touch-bar .tb-pause { border-color: rgba(255,200,87,0.5); }
+
+/* HUD'un dokunmatikteki hâli: klavye ipuçları gizli, slotlar dokunulabilir */
+.touch .key-hints, .touch .click-hint { display: none !important; }
+.touch .interact-main .kbd, .touch .build-help .bh-keys, .touch .panel-title .kbd { display: none; }
+.touch .hotbar { bottom: calc(14px + var(--safe-b)); }
+.touch .hotbar .slot { pointer-events: auto; touch-action: none; }
+.touch .hotbar-label { bottom: calc(92px + var(--safe-b)); }
+.touch .compass { top: calc(60px + var(--safe-t)); }
+.touch .region-label { top: calc(94px + var(--safe-t)); }
+.touch .toasts { top: calc(116px + var(--safe-t)); width: min(520px, 64vw); }
+.touch .hud-left { top: calc(10px + var(--safe-t)); left: calc(10px + var(--safe-l)); }
+.touch .hud-right { top: calc(10px + var(--safe-t)); right: calc(10px + var(--safe-r)); }
+.touch .build-help { bottom: calc(110px + var(--safe-b)); }
+.touch .chat { bottom: auto; top: 36%; left: calc(14px + var(--safe-l)); width: min(340px, 44vw); }
+.touch .btn, .touch .panel-close { min-height: 40px; }
+.touch .panel-close { min-width: 40px; }
+.touch .boss-bar { top: calc(120px + var(--safe-t)); }
+
+/* dar ekranlarda (telefon, küçük tablet dikey) hotbar sağdaki düğmelere çarpmasın */
+@media (max-width: 1000px) {
+  .touch .hotbar { left: calc(50% - 70px); }
+  .touch .hotbar-label { left: calc(50% - 70px); }
+  .touch .compass { width: 280px; }
+}
+
+/* büyük tabletlerde (iPad) menü düğmelerinde yazı da görünsün */
+@media (min-width: 1000px) and (min-height: 700px) {
+  .touch-bar .tbtn { width: 62px; height: 52px; }
+  .touch-bar .tb-label { display: block; font-size: 9.5px; }
+  .touch-cluster { transform: scale(1.1); }
+}
+
+/* telefon (yatay): her şey biraz daha küçük */
+@media (max-height: 560px) {
+  .touch .hud-stats { min-width: 160px; padding: 6px 9px; gap: 3px; }
+  .touch .stat-row { grid-template-columns: 16px 1fr 44px; font-size: 11px; gap: 5px; }
+  .touch .stat-effects { font-size: 10px; }
+  .touch .hud-clock { min-width: 140px; padding: 6px 10px; }
+  .touch .hud-day { font-size: 15px; }
+  .touch .hud-phase { font-size: 11px; }
+  .touch .hud-level { margin-top: 4px; font-size: 11.5px; }
+  .touch .hud-xp { width: 120px; }
+  .touch .hud-xp-text { display: none; }
+  .touch .hud-right { gap: 6px; }
+  .touch .quest-tracker { width: 190px; gap: 5px; }
+  .touch .qt-item { padding: 5px 8px; }
+  .touch .qt-title { font-size: 12px; }
+  .touch .qt-obj { font-size: 10.5px; }
+  .touch .qt-hint, .touch .qt-type { display: none; }
+  .touch .compass { width: 240px; top: calc(52px + var(--safe-t)); }
+  .touch .region-label { top: calc(84px + var(--safe-t)); }
+  .touch .toasts { top: calc(100px + var(--safe-t)); }
+  .touch .toast { font-size: 12.5px; padding: 6px 12px; }
+  .touch .hotbar { gap: 5px; padding: 5px; border-radius: 12px; }
+  .touch .hotbar .slot { width: 44px; height: 44px; }
+  .touch .hotbar .slot .icon .ri { width: 34px; height: 34px; }
+  .touch .hotbar-label { bottom: calc(70px + var(--safe-b)); }
+  .touch .build-help { bottom: calc(76px + var(--safe-b)); padding: 7px 12px; }
+  .touch .interact-prompt { top: calc(50% + 28px); }
+  .touch .interact-main { font-size: 14px; }
+  .touch .touch-bar .tbtn { width: 38px; height: 38px; border-radius: 10px; }
+  .touch .touch-bar .tbtn .tb-icon { font-size: 17px; }
+  .touch-cluster { transform: scale(0.82); }
+  .joy-hint { width: 92px; height: 92px; left: calc(24px + var(--safe-l)); bottom: calc(24px + var(--safe-b)); }
+  .touch .boss-bar { top: calc(104px + var(--safe-t)); }
+
+  /* paneller ve menüler kısa ekrana sığsın */
+  .panel { max-height: 96vh; width: 98vw; border-radius: 12px; }
+  .panel-header { padding: 6px 12px; }
+  .panel-title { font-size: 16px; }
+  .panel-body { padding: 10px 12px; }
+  .inv-grid { grid-template-columns: repeat(auto-fill, 52px); }
+  .inv-grid .slot { width: 52px; height: 52px; }
+  .dialog { max-height: 94vh; padding: 14px 16px; }
+  .dialog h2 { font-size: 21px; margin-bottom: 8px; }
+  .menu-layer.main { padding-left: calc(4vw + var(--safe-l)); }
+  .main-menu { width: 290px; gap: 7px; max-height: 96vh; overflow-y: auto; }
+  .game-title { font-size: 42px; }
+  .game-sub { font-size: 13px; }
+  .game-tag { margin-bottom: 8px; }
+  .main-menu .btn { padding: 9px 14px; font-size: 14px; }
+  .menu-foot { display: none; }
+  .pause-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; width: min(600px, 94vw); max-height: 96vh; overflow-y: auto; scrollbar-width: none; }
+  .pause-menu > :not(.btn), .pause-menu .btn.primary { grid-column: 1 / -1; }
+  .pause-menu .btn { padding: 9px 12px; font-size: 14px; }
+  .pause-menu h2 { font-size: 24px; margin: 0; }
+  .banner .b-title { font-size: 28px; }
+  .banner .b-sub { font-size: 13px; }
+  .intro .i-day { font-size: 34px; }
+  .intro .i-text { font-size: 14px; }
+}
+
+/* yatay telefon: paneller tek sütuna düşmesin, yan yana sığsın */
+@media (max-height: 560px) and (min-width: 640px) {
+  .inv-layout { grid-template-columns: 1fr 250px; gap: 12px; }
+  .craft-layout { grid-template-columns: 130px 1fr 240px; gap: 10px; min-height: 0; }
+  .journal-layout { grid-template-columns: 220px 1fr; gap: 12px; min-height: 0; }
+  .container-layout { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .map-canvas { width: min(78vh, 600px); height: min(78vh, 600px); }
+  .dialog.wide { width: 96vw; }
+  .diff-grid { grid-template-columns: repeat(4, 1fr); gap: 7px; }
+  .diff-card { padding: 9px 9px; gap: 4px; }
+  .dc-icon { font-size: 22px; }
+  .dc-name { font-size: 15px; }
+  .dc-desc { font-size: 11px; line-height: 1.35; min-height: 0; }
+  .dc-stats { font-size: 10.5px; }
+  .char-body { grid-template-columns: 240px 1fr; gap: 12px; }
+  .char-stage { height: 62vh; }
+  .char-controls { max-height: 62vh; }
+}
+.main-menu { scrollbar-width: none; }
+.main-menu::-webkit-scrollbar { display: none; }
+
+/* dikey telefon ("Böyle devam et" denirse): HUD üstte sıkışık, hotbar en altta, kontroller onun üstünde */
+@media (max-width: 600px) and (orientation: portrait) {
+  .touch-bar { gap: 4px; }
+  .touch .touch-bar .tbtn { width: 36px; height: 36px; border-radius: 10px; }
+  .touch .touch-bar .tbtn .tb-icon { font-size: 16px; }
+  .touch .hud-left, .touch .hud-right { top: calc(52px + var(--safe-t)); }
+  .touch .compass, .touch .region-label { display: none; }
+  .touch .hud-stats { min-width: 150px; padding: 6px 8px; gap: 3px; }
+  .touch .stat-row { grid-template-columns: 16px 1fr 40px; font-size: 11px; gap: 5px; }
+  .touch .hud-clock { min-width: 120px; padding: 6px 9px; }
+  .touch .hud-day { font-size: 15px; }
+  .touch .hud-phase { font-size: 11px; }
+  .touch .hud-level { margin-top: 4px; font-size: 11.5px; }
+  .touch .hud-xp { width: 100px; }
+  .touch .hud-xp-text { display: none; }
+  .touch .quest-tracker { width: 170px; gap: 5px; }
+  .touch .qt-item { padding: 5px 8px; }
+  .touch .qt-title { font-size: 12px; }
+  .touch .qt-obj { font-size: 10.5px; }
+  .touch .qt-hint, .touch .qt-type { display: none; }
+  .touch .toasts { top: 30%; width: 92vw; }
+  .touch .boss-bar { top: 24%; }
+  .touch .hotbar { left: 50%; bottom: calc(8px + var(--safe-b)); gap: 5px; padding: 5px; }
+  .touch .hotbar .slot { width: 46px; height: 46px; }
+  .touch .hotbar .slot .icon .ri { width: 34px; height: 34px; }
+  .touch .hotbar-label { left: 50%; bottom: calc(66px + var(--safe-b)); }
+  .touch-cluster { right: calc(6px + var(--safe-r)); bottom: calc(70px + var(--safe-b)); transform: scale(0.82); }
+  .joy-hint { left: calc(18px + var(--safe-l)); bottom: calc(86px + var(--safe-b)); width: 96px; height: 96px; }
+  .touch .build-help { bottom: auto; top: calc(50% + 36px); max-width: 92vw; }
+  .touch .interact-main { font-size: 14px; flex-wrap: wrap; justify-content: center; max-width: 90vw; }
+  .touch .chat { top: 40%; width: 84vw; }
+}
+
+.inv-note.moving { color: var(--accent); font-weight: 700; }
+.touch .dialog { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.25) transparent; }
+
+/* dikey tutulan telefon: yan çevirme uyarısı */
+.rotate-hint { display: none; position: fixed; inset: 0; z-index: 60; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; background: rgba(5,10,14,0.94); pointer-events: auto; }
+.rh-icon { font-size: 58px; animation: rotatephone 1.8s ease-in-out infinite; }
+.rh-text { font-size: 17px; font-weight: 700; max-width: 260px; line-height: 1.5; }
+@keyframes rotatephone { 0%, 20% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) and (max-width: 600px) {
+  body.touch .rotate-hint:not(.dismissed) { display: flex; }
 }

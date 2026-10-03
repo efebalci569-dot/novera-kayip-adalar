@@ -29,6 +29,7 @@ import { UIManager } from '../ui/UIManager.js';
 import { DIFFICULTY_ORDER, difficultyDef } from '../data/difficulty.js';
 import { ITEMS } from '../data/items.js';
 import { clamp, smoothstep } from '../utils/math.js';
+import { enterFullscreen } from '../utils/device.js';
 
 const AUTOSAVE_INTERVAL = 60;
 const START_ITEMS = { berries: 2 };
@@ -216,6 +217,8 @@ export class Game {
     this.ui.hud.renderHotbar();
     this.ui.hud.renderPlayers();
     this.input.requestLock();
+    // telefon/tablette oyuna girerken tam ekran (menü dokunuşu içinde çağrıldığı için izin verilir)
+    if (this.settings.touchEnabled) enterFullscreen();
     this.lastTime = performance.now();
   }
 

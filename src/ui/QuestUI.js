@@ -1,5 +1,6 @@
 import { Panel } from './Panel.js';
 import { h } from './dom.js';
+import { forInput } from './touchText.js';
 import { QUESTS, QUEST_TYPES } from '../data/quests.js';
 import { LORE } from '../data/lore.js';
 import { ITEMS } from '../data/items.js';
@@ -88,7 +89,7 @@ export class QuestUI extends Panel {
       h('p', {}, q.desc),
       h('div', { class: 'section-title' }, 'Hedefler'),
       objs,
-      q.hint ? h('div', { class: 'qt-hint', style: { fontSize: '13px', marginTop: '10px' } }, `💡 ${q.hint}`) : null,
+      q.hint ? h('div', { class: 'qt-hint', style: { fontSize: '13px', marginTop: '10px' } }, `💡 ${forInput(this.game, q.hint)}`) : null,
       rewards.length ? h('div', { class: 'section-title', style: { marginTop: '14px' } }, 'Ödüller') : null,
       h('div', { class: 'rewards' }, rewards.map((t) => h('span', { class: 'chip' }, t))),
     );

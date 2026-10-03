@@ -1,4 +1,5 @@
 import { defaultBindings, ACTIONS } from '../data/controls.js';
+import { isTouchDevice, isPhone } from '../utils/device.js';
 
 const KEY = 'novera.settings.v1';
 
@@ -20,6 +21,8 @@ const DEFAULTS = {
   showFps: false,
   cameraMode: 'first', // 'first' (gözden) | 'third' (omuz arkası)
   headBob: true,
+  touchControls: 'auto', // 'auto' (telefon/tablette açık) | 'on' | 'off'
+  touchSensitivity: 1,
 };
 
 function safeStorage(fn, fallback = null) {
@@ -43,7 +46,8 @@ export class Settings {
 
   static load() {
     const raw = safeStorage(() => localStorage.getItem(KEY));
-    if (!raw) return new Settings();
+    // ilk açılış: telefonda düşük, tablette orta kalite (pil ve akıcılık için)
+    if (!raw) return new Settings(isPhone() ? { quality: 'low' } : {});
     const data = safeStorage(() => JSON.parse(raw), {});
     if (!QUALITY_PRESETS[data.quality]) delete data.quality;
     return new Settings(data);
@@ -80,5 +84,12 @@ export class Settings {
 
   get qualityPreset() {
     return QUALITY_PRESETS[this.quality] ?? QUALITY_PRESETS.medium;
+  }
+
+  /** Ekrandaki dokunmatik kontroller (joystick, düğmeler) gösterilsin mi? */
+  get touchEnabled() {
+    if (this.touchControls === 'on') return true;
+    if (this.touchControls === 'off') return false;
+    return isTouchDevice();
   }
 }

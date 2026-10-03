@@ -205,6 +205,9 @@ export class VehicleSystem {
       if (input.isDown('backward')) throttle -= 0.5;
       if (input.isDown('left')) turn += 1;
       if (input.isDown('right')) turn -= 1;
+      // dokunmatik joystick: ileri/geri gaz, sağ/sol dümen
+      throttle = clamp(throttle + (input.axis.y < 0 ? input.axis.y * 0.5 : input.axis.y), -0.5, 1);
+      turn = clamp(turn - input.axis.x, -1, 1);
     }
     const boost = inputEnabled && input.isDown('run') && throttle > 0 && g.player.stats.canRun ? 1.3 : 1;
     if (boost > 1) g.player.stats.stamina = Math.max(0, g.player.stats.stamina - 6 * dt);

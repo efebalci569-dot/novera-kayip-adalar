@@ -13,6 +13,7 @@ export class InputManager {
     this.mouseDX = 0;
     this.mouseDY = 0;
     this.wheel = 0;
+    this.axis = { x: 0, y: 0 }; // dokunmatik joystick: x sağ, y ileri (-1..1)
     this.pointerLocked = false;
     this.captureHandler = null; // tuş atama ekranı için
     this.lockListeners = new Set();
@@ -112,6 +113,28 @@ export class InputManager {
     return this.pressed.has(code);
   }
 
+  // ── Dokunmatik düğmeler: bir aksiyonu ona bağlı ilk tuş üzerinden basılı sayar ──
+  codeFor(action) {
+    return this.codes(action)[0] ?? `Virtual:${action}`;
+  }
+
+  virtualDown(action) {
+    const code = this.codeFor(action);
+    if (!this.down.has(code)) this.pressed.add(code);
+    this.down.add(code);
+  }
+
+  virtualUp(action) {
+    const code = this.codeFor(action);
+    this.down.delete(code);
+    this.released.add(code);
+  }
+
+  /** Tek seferlik basış (ör. envanteri aç). */
+  virtualTap(action) {
+    this.pressed.add(this.codeFor(action));
+  }
+
   endFrame() {
     this.pressed.clear();
     this.released.clear();
@@ -122,6 +145,7 @@ export class InputManager {
 
   requestLock() {
     if (this.pointerLocked) return Promise.resolve(true);
+    if (this.settings.touchEnabled) return Promise.resolve(false); // dokunmatikte bakış parmakla yapılır
     try {
       const p = this.canvas.requestPointerLock?.();
       return Promise.resolve(p).then(() => true).catch(() => false);
