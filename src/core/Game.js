@@ -29,7 +29,7 @@ import { UIManager } from '../ui/UIManager.js';
 import { DIFFICULTY_ORDER, difficultyDef } from '../data/difficulty.js';
 import { ITEMS } from '../data/items.js';
 import { clamp, smoothstep } from '../utils/math.js';
-import { enterFullscreen } from '../utils/device.js';
+import { enterFullscreen, isTouchDevice } from '../utils/device.js';
 
 const AUTOSAVE_INTERVAL = 60;
 const START_ITEMS = { berries: 2 };
@@ -52,9 +52,16 @@ export class Game {
     this.input = new InputManager(canvas, this.settings);
     this.audio = new AudioManager(this.settings);
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    // yüksek DPI telefonlarda kenar yumuşatma (MSAA) gözle fark edilmez ama pahalıdır
+    const denseScreen = isTouchDevice() && (window.devicePixelRatio || 1) >= 2;
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !denseScreen, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false; // gölge haritası ön ayara göre her 1–2 karede bir yenilenir
+    this.frameNo = 0;
+    this.shadowEvery = 1;
+    this.resScale = 1; // otomatik çözünürlük çarpanı
+    this.perf = { t: 0, n: 0, good: 0 };
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, window.innerWidth / window.innerHeight, 0.1, 2200);
 
@@ -98,6 +105,11 @@ export class Game {
     this.applySettings();
     this.settings.onChange((key) => {
       if (key === 'quality' || key === 'fov') this.applySettings();
+      if (key === 'uiScale') this.applyUiScale();
+      if (key === 'autoResolution') {
+        this.resScale = 1;
+        this.applyPixelRatio();
+      }
       if (key === 'cameraMode') this.cameraController.setMode(this.settings.cameraMode);
       if (key === 'bindings') {
         this.ui.hud.renderHotbar();
@@ -110,6 +122,16 @@ export class Game {
     canvas.addEventListener('click', () => {
       if (this.state.mode === 'playing' && !this.ui.active && !this.mpMenu) this.input.requestLock();
     });
+    // telefonda sekme/uygulama arka plana alınınca sayfa haber vermeden kapatılabilir: hemen kaydet
+    const saveOnHide = () => {
+      if (this.state.mode === 'menu') return;
+      if (this.net.isClient) this.saveGuest();
+      else this.save();
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) saveOnHide();
+    });
+    window.addEventListener('pagehide', saveOnHide);
     window.addEventListener('beforeunload', () => {
       if (this.net.isClient) this.saveGuest();
       else this.save();
@@ -179,13 +201,77 @@ export class Game {
   // ── Ayarlar / pencere ───────────────────────────────────
   applySettings() {
     const preset = this.settings.qualityPreset;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preset.pixelRatio));
     this.world.dayNight.setShadowQuality(preset.shadows, preset.shadowMapSize);
     this.world.dayNight.setFogScale(preset.fog);
     this.world.grass.setDensity(preset.grass);
+    this.world.grass.setShadows(preset.shadows && preset.grassShadows);
     this.world.resources.lodDistance = preset.lod;
+    this.shadowEvery = preset.shadowEvery ?? 1;
+    const type = preset.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    if (this.renderer.shadowMap.type !== type) {
+      this.renderer.shadowMap.type = type;
+      // gölge türü değişince malzemeler yeniden derlenmeli
+      this.scene.traverse((o) => {
+        if (!o.material) return;
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
+      });
+    }
+    this.renderer.shadowMap.needsUpdate = true;
     this.camera.fov = this.settings.fov;
+    this.resScale = 1;
+    this.applyUiScale();
+    this.applyPixelRatio();
+  }
+
+  /** Piksel oranı = cihaz oranı (ön ayarla sınırlı) × otomatik çözünürlük çarpanı. */
+  applyPixelRatio() {
+    const preset = this.settings.qualityPreset;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preset.pixelRatio) * this.resScale);
     this.onResize();
+  }
+
+  applyUiScale() {
+    document.documentElement.style.setProperty('--ui-scale', String(this.settings.uiScaleValue));
+  }
+
+  /**
+   * Otomatik çözünürlük: kare hızı uzun süre düşük kalırsa çözünürlüğü kademeli azaltır,
+   * akıcılık geri gelince yeniden artırır (en az %55).
+   */
+  updateAutoResolution(realDt) {
+    const p = this.perf;
+    if (!this.settings.autoResolution || document.hidden) {
+      p.t = 0;
+      p.n = 0;
+      return;
+    }
+    if (realDt > 0.5) {
+      // takılma (sekme değişimi, derleme): bu pencereyi sayma
+      p.t = 0;
+      p.n = 0;
+      return;
+    }
+    p.t += realDt;
+    p.n++;
+    if (p.t < 2) return;
+    const fps = p.n / p.t;
+    p.t = 0;
+    p.n = 0;
+    let next = this.resScale;
+    if (fps < 42 && this.resScale > 0.55) {
+      next = Math.max(0.55, this.resScale - (fps < 28 ? 0.2 : 0.1));
+      p.good = 0;
+    } else if (fps > 56 && this.resScale < 1) {
+      p.good++;
+      if (p.good >= 3) {
+        next = Math.min(1, this.resScale + 0.1);
+        p.good = 0;
+      }
+    } else p.good = 0;
+    if (Math.abs(next - this.resScale) > 0.001) {
+      this.resScale = Math.round(next * 100) / 100;
+      this.applyPixelRatio();
+    }
   }
 
   onResize() {
@@ -903,9 +989,14 @@ export class Game {
   // ── Döngü ───────────────────────────────────────────────
   loop() {
     const now = performance.now();
-    const dt = Math.min((now - this.lastTime) / 1000, 0.05);
+    const realDt = (now - this.lastTime) / 1000;
+    const dt = Math.min(realDt, 0.05);
     this.lastTime = now;
     const mode = this.state.mode;
+    this.updateAutoResolution(realDt);
+    // gölge haritası: ön ayara göre her karede ya da iki karede bir
+    this.frameNo++;
+    if (this.shadowEvery <= 1 || this.frameNo % this.shadowEvery === 0) this.renderer.shadowMap.needsUpdate = true;
 
     if (mode === 'menu') {
       this.cameraController.updateMenu(dt);

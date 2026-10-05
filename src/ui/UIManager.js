@@ -11,7 +11,9 @@ import { ContainerUI } from './ContainerUI.js';
 import { NoteUI } from './NoteUI.js';
 import { MenuUI } from './MenuUI.js';
 import { TouchControls } from './TouchControls.js';
-import { registerIconKind } from './ItemIcons.js';
+import { registerIconKind, warmIcons } from './ItemIcons.js';
+import { ITEMS } from '../data/items.js';
+import { BUILDINGS } from '../data/buildings.js';
 import { buildAnimalModel } from '../world/AnimalModels.js';
 import { buildCreatureModel } from '../world/CreatureModels.js';
 
@@ -35,7 +37,12 @@ export class UIManager {
     registerIconKind('boss', (type) => ({ object: buildCreatureModel(type).root, rotation: [0.15, -0.6, 0] }));
     this.root = document.getElementById('ui-root');
     this.hud = new HUD(game, this.root);
-    this.touch = new TouchControls(game, this.root); // telefon/tablet kontrolleri (paneller ve menüler bunun üstünde)
+    this.touch = new TouchControls(game, this.root);
+    // ikonları boşta önceden çiz (paneller ilk açılınca takılmasın)
+    setTimeout(() => warmIcons([
+      ...Object.keys(ITEMS).map((id) => ['item', id]),
+      ...Object.keys(BUILDINGS).map((id) => ['building', id]),
+    ]), 2500); // telefon/tablet kontrolleri (paneller ve menüler bunun üstünde)
     this.panelLayer = h('div', { class: 'panel-layer' });
     this.panelLayer.addEventListener('mousedown', (e) => {
       if (e.target === this.panelLayer) this.close();

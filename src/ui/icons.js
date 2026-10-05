@@ -83,6 +83,19 @@ export const ICONS = {
   snowflake: { color: '#a5e3ff', svg: `<path d="M12 2v20M3.3 7l17.4 10M3.3 17l17.4-10M9.5 3.5 12 6l2.5-2.5M9.5 20.5 12 18l2.5 2.5"/>` },
   thermo: { color: '#ff8a5c', svg: `<path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/>` },
   cactus: { color: '#7cbf5a', svg: `<path d="M10 21V5a2 2 0 0 1 4 0v16M14 11h2a2 2 0 0 0 2-2V7M10 13H8a2 2 0 0 1-2-2V9M7 21h10"/>` },
+  // dokunmatik kontroller
+  menu: { svg: `<path d="M4 7h16M4 12h16M4 17h16"/>` },
+  expand: { svg: `<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>` },
+  shrink: { svg: `<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>` },
+  run: { svg: `<circle ${S} cx="15" cy="4.6" r="2.1"/><path d="M7.5 21l3.2-5.6 3 2.4V22M5.5 10.6l4-2.8 4.2.8 2.3 3.6 3.2 1M10.7 15.4l1.6-6.6"/>` },
+  jump: { svg: `<path d="M12 18V5M6.5 10.5 12 5l5.5 5.5M5 21h14"/>` },
+  fist: { svg: `<path d="M7 11V8.2a1.6 1.6 0 0 1 3.2 0V11M10.2 10.4V7.4a1.6 1.6 0 0 1 3.2 0v3M13.4 10.4V7.9a1.6 1.6 0 0 1 3.2 0v3M16.6 10.4a1.6 1.6 0 0 1 3.2 0v2.8a7.2 7.2 0 0 1-7.2 7.2h-1.2A5.4 5.4 0 0 1 6 15v-1.6a2.2 2.2 0 0 1 2.2-2.2h3.4"/>` },
+  hand: { svg: `<path d="M8 13V5.6a1.5 1.5 0 0 1 3 0V12M11 11.5V4.6a1.5 1.5 0 0 1 3 0V12M14 11.5V6.1a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7 6.2 6.2 0 0 1-5.3-3L3 14.7a1.6 1.6 0 0 1 2.7-1.7L8 15.2"/>` },
+  close: { svg: `<path d="M6 6l12 12M18 6 6 18"/>` },
+  rotate: { svg: `<path d="M20 11.5A8 8 0 1 1 17.7 6M20 3.5V9h-5.5"/>` },
+  chevronDown: { svg: `<path d="M6 9l6 6 6-6"/>` },
+  chevronUp: { svg: `<path d="M6 15l6-6 6 6"/>` },
+  pause: { svg: `<path d="M9 5v14M15 5v14"/>` },
 };
 
 /** SVG ikon öğesi. size: px, color: varsayılan rengin yerine. */

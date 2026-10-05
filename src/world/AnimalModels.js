@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { part, merge, sharedMaterials } from './Models.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Düşük poligonlu hayvan modelleri. Her hayvan birkaç parçalı bir gruptur:
 // gövde (birleşik geometri), baş (otlarken eğilir), bacaklar (yürürken salınır),
@@ -25,14 +26,16 @@ function leg(geo, x, y, z) {
   return g;
 }
 
+/** İki göz tek geometride (iki ayrı çizim çağrısı yerine bir). */
 function eyePair(geo, x, y, z) {
   const g = new THREE.Group();
-  for (const side of [-1, 1]) {
-    const e = mesh(geo);
-    e.position.set(side * x, y, z);
-    e.castShadow = false;
-    g.add(e);
-  }
+  const merged = cached(`eyes:${geo.uuid}:${x}:${y}:${z}`, () => mergeGeometries([
+    geo.clone().translate(-x, y, z),
+    geo.clone().translate(x, y, z),
+  ]));
+  const e = mesh(merged);
+  e.castShadow = false;
+  g.add(e);
   return g;
 }
 

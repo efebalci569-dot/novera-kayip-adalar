@@ -218,6 +218,15 @@ export class GrassField {
     this.centerKey = null;
   }
 
+  /** Çimenler gölge alsın mı (çok sayıda parça olduğundan orta kalitede kapalı). */
+  setShadows(on) {
+    for (const m of [this.grass, this.flowers]) {
+      if (m.receiveShadow === on) continue;
+      m.receiveShadow = on;
+      m.material.needsUpdate = true;
+    }
+  }
+
   update(dt, focus) {
     this.uniforms.uTime.value += dt;
     this.uniforms.uCenter.value.set(focus.x, focus.z);

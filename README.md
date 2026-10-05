@@ -155,7 +155,8 @@ Madencinin defteri → **Orman Kalbi** → Orman Muhafızı → tekneyle Çöl A
 - **Keşif**: sisli harita (fog of war), bölge keşif bildirimleri.
 - **Ses**: tamamen prosedürel (dosya yok): dalga, rüzgâr, kuşlar, cırcır böcekleri, uzak uluma, ateş çıtırtısı, efektler ve seyrek, alçak sesli ambiyans müziği.
 - **Kayıt**: otomatik (60 sn'de bir + önemli olaylarda), elle kaydetme, ana menüden devam. Eski kayıtlar yeni sürüme otomatik uyarlanır (yeni tarif/yapılar seviyeye ve tamamlanan görevlere göre açılır).
-- **Ayarlar**: ses kanalları, grafik kalitesi (Düşük/Orta/Yüksek), kamera modu, baş sallanması, FOV, fare hassasiyeti, Y ekseni, FPS göstergesi, tuş atamaları.
+- **Ayarlar**: ses kanalları, grafik kalitesi (Düşük/Orta/Yüksek), otomatik çözünürlük, arayüz boyutu, kamera modu, baş sallanması, FOV, fare/dokunmatik hassasiyeti, Y ekseni, FPS göstergesi, tuş atamaları.
+- **Telefon ve tablet**: sol tarafta joystick (sonuna kadar itince koşar), sağ tarafta kaydırarak bakış; Eylem, Zıpla, Kullan, Koş düğmeleri; üstte Envanter, Harita, Sohbet ve **Menü** (üretim, inşa, günlük, yetenekler, teknoloji, kamera, tam ekran, duraklat). Görev listesine dokununca küçülür, çevrim içi oda paneli **Tamam** ile küçük bir rozete döner. Uygulama arka plana alınınca oyun kaydedilir.
 
 ## Klasör yapısı
 
@@ -282,7 +283,9 @@ iron_axe: {
 - Ağaçların uzak parçaları otomatik olarak düşük poligonlu ikizleriyle (LOD) değiştirilir; küçük süsler belli bir mesafeden sonra gizlenir.
 - Çimen yalnızca oyuncunun çevresindeki ~48 m'de, hücre hücre üretilir; kenarda yumuşakça zemine iner.
 - Modeller düşük poligonlu ve köşe renklidir; doku yüklenmez.
-- Tek gölge ışığı oyuncuyu takip eder; gölge haritası kaliteye göre 1024/2048 ya da kapalı.
+- Tek gölge ışığı oyuncuyu takip eder; gölge haritası kaliteye göre kapalı / 1536 / 2048. Orta kalitede gölge haritası iki karede bir yenilenir; çimenler gölge almaz.
+- **Otomatik çözünürlük**: kare hızı düşük kalırsa çözünürlük kademeli azaltılır (en az %55), akıcılık dönünce geri artar.
+- Canlılar yalnızca yakındayken (~32 m) gölge düşürür; hayvan gözleri tek parça çizilir. Eşya simgeleri boşta, birer birer önceden hazırlanır.
 - Rüzgâr salınımı tamamen köşe gölgelendiricisinde (GPU) hesaplanır; ek CPU maliyeti yoktur.
 - Mağara yüzeyden ayrı bir alandır: içerideyken ada, su ve gökyüzü hiç çizilmez; ışık havuzu 3B uzaklığa göre seçer.
 - Uzaktaki hayvanlar donar ve çizilmez; kütükler tek bir InstancedMesh ile yalnızca kullanılan yuvalar kadar çizilir.

@@ -3,11 +3,17 @@ import { isTouchDevice, isPhone } from '../utils/device.js';
 
 const KEY = 'novera.settings.v1';
 
+// Kalite ön ayarları
+//   pixelRatio   : en fazla piksel oranı (yüksek DPI ekranlarda asıl yükü bu belirler)
+//   shadowEvery  : gölge haritası kaç karede bir yenilensin (2 → yarı maliyet; gözle fark edilmez)
+//   softShadows  : yumuşak (PCFSoft) gölge kenarları · grassShadows: çimenler gölge alsın mı
 export const QUALITY_PRESETS = {
-  low: { label: 'Düşük', pixelRatio: 1, shadows: false, shadowMapSize: 1024, grass: 0.45, fog: 0.75, lod: 35 },
-  medium: { label: 'Orta', pixelRatio: 1.5, shadows: true, shadowMapSize: 2048, grass: 1.0, fog: 1, lod: 70 },
-  high: { label: 'Yüksek', pixelRatio: 2, shadows: true, shadowMapSize: 4096, grass: 1.5, fog: 1.1, lod: 120 },
+  low: { label: 'Düşük', pixelRatio: 1, shadows: false, shadowMapSize: 1024, shadowEvery: 2, softShadows: false, grassShadows: false, grass: 0.45, fog: 0.75, lod: 35 },
+  medium: { label: 'Orta', pixelRatio: 1, shadows: true, shadowMapSize: 1536, shadowEvery: 2, softShadows: false, grassShadows: false, grass: 0.75, fog: 0.95, lod: 55 },
+  high: { label: 'Yüksek', pixelRatio: 1.5, shadows: true, shadowMapSize: 2048, shadowEvery: 1, softShadows: true, grassShadows: true, grass: 1.15, fog: 1.05, lod: 90 },
 };
+
+export const UI_SCALES = [['auto', 'Otomatik'], [0.85, 'Küçük'], [1, 'Normal'], [1.15, 'Büyük']];
 
 const DEFAULTS = {
   masterVolume: 0.8,
@@ -23,6 +29,8 @@ const DEFAULTS = {
   headBob: true,
   touchControls: 'auto', // 'auto' (telefon/tablette açık) | 'on' | 'off'
   touchSensitivity: 1,
+  uiScale: 'auto', // arayüz ve dokunmatik düğme boyutu: 'auto' | 0.85 | 1 | 1.15
+  autoResolution: true, // kare hızı düşünce çözünürlüğü kendiliğinden azalt
 };
 
 function safeStorage(fn, fallback = null) {
@@ -84,6 +92,13 @@ export class Settings {
 
   get qualityPreset() {
     return QUALITY_PRESETS[this.quality] ?? QUALITY_PRESETS.medium;
+  }
+
+  /** Arayüz ölçeği (otomatikte telefonda biraz küçük). */
+  get uiScaleValue() {
+    const v = Number(this.uiScale);
+    if (Number.isFinite(v) && v > 0.5 && v < 2) return v;
+    return isPhone() ? 0.9 : 1;
   }
 
   /** Ekrandaki dokunmatik kontroller (joystick, düğmeler) gösterilsin mi? */

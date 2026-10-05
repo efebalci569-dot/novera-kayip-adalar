@@ -439,6 +439,15 @@ button { font-family: inherit; }
 .mp-row.self { color: var(--accent); }
 .mp-row.self .dot { background: #ff5a4a; box-shadow: 0 0 6px #ff5a4a; }
 .mp-row .crown { font-size: 11px; }
+.mp-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+.mp-foot .mp-hint { font-size: 11px; color: var(--muted); }
+.mp-ok { pointer-events: auto; padding: 4px 14px; min-height: 30px; }
+.mp-panel.collapsed { min-width: 0; padding: 0; background: none; }
+.mp-chip { pointer-events: auto; display: flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18); background: rgba(10,18,22,0.6); color: #e8eef0; font-family: var(--font); font-size: 12px; cursor: pointer; }
+.mp-chip .ri { width: 15px; height: 15px; color: #7fc6ff; }
+.mp-chip .mp-code { font-size: 12px; }
+/* arayüz boyutu (Ayarlar → Grafik/Kontroller) */
+.hud-left, .hud-right, .hotbar, .hotbar-label { zoom: var(--ui-scale, 1); }
 .mp-hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
 .hud.spectator .hud-stats, .hud.spectator .hotbar, .hud.spectator .hotbar-label, .hud.spectator .crosshair, .hud.spectator .vignette, .hud.spectator .key-hints { display: none; }
 .spectator-tag { position: absolute; top: 82px; left: 50%; transform: translateX(-50%); text-align: center; font-weight: 800; letter-spacing: 0.16em; color: #d8e6ff; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
@@ -567,24 +576,39 @@ button { font-family: inherit; }
 .tbtn.down { transform: scale(0.9); background: rgba(255,200,87,0.38); border-color: var(--accent); }
 .tbtn.on { background: rgba(125,220,114,0.35); border-color: var(--ok); }
 .tbtn.dim { opacity: 0.45; }
-.tbtn .tb-icon { font-size: 22px; line-height: 1; }
+.tbtn .tb-icon { font-size: 22px; line-height: 1; display: flex; }
+.tbtn .tb-icon .ri { width: 24px; height: 24px; }
+.tbtn .tb-icon .ri.img { width: 30px; height: 30px; }
 .tbtn .tb-label { font-size: 10px; line-height: 1.1; max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
 
-.touch-cluster { position: absolute; right: calc(16px + var(--safe-r)); bottom: calc(16px + var(--safe-b)); width: 262px; height: 214px; pointer-events: none; transform-origin: bottom right; }
-.tb-action { right: 0; bottom: 0; width: 100px; height: 100px; border-color: rgba(255,200,87,0.65); background: rgba(40,30,8,0.45); }
-.tb-action .tb-icon { font-size: 30px; }
-.tb-action .tb-label { font-size: 12px; }
-.tb-jump { right: 112px; bottom: 4px; width: 66px; height: 66px; }
-.tb-use { right: 16px; bottom: 112px; width: 64px; height: 64px; }
-.tb-run { right: 104px; bottom: 86px; width: 56px; height: 56px; }
-.tb-rotate { right: 186px; bottom: 32px; width: 58px; height: 58px; }
+.touch-cluster { position: absolute; right: calc(18px + var(--safe-r)); bottom: calc(18px + var(--safe-b)); width: 280px; height: 236px; pointer-events: none; transform-origin: bottom right; zoom: var(--ui-scale, 1); }
+.tb-action { right: 0; bottom: 0; width: 96px; height: 96px; border-color: rgba(255,200,87,0.65); background: rgba(40,30,8,0.45); }
+.tb-action .tb-icon .ri { width: 34px; height: 34px; }
+.tb-action .tb-icon .ri.img { width: 44px; height: 44px; }
+.tb-action .tb-label { font-size: 11.5px; }
+.tb-jump { right: 120px; bottom: 0; width: 64px; height: 64px; }
+.tb-use { right: 16px; bottom: 124px; width: 62px; height: 62px; }
+.tb-run { right: 112px; bottom: 100px; width: 56px; height: 56px; }
+.tb-rotate { right: 204px; bottom: 54px; width: 56px; height: 56px; }
 
 /* üst çubuk: menüler */
-.touch-bar { position: absolute; top: calc(8px + var(--safe-t)); left: 50%; transform: translateX(-50%); display: flex; gap: 6px; pointer-events: none; }
+.touch-bar { position: absolute; top: calc(8px + var(--safe-t)); left: 50%; transform: translateX(-50%); display: flex; gap: 10px; pointer-events: none; zoom: var(--ui-scale, 1); }
 .touch-bar .tbtn { position: static; width: 44px; height: 44px; border-radius: 12px; }
-.touch-bar .tbtn .tb-icon { font-size: 20px; }
+.touch-bar .tbtn .tb-icon .ri { width: 22px; height: 22px; }
 .touch-bar .tb-label { display: none; }
 .touch-bar .tb-pause { border-color: rgba(255,200,87,0.5); }
+.tbtn.hidden { display: none; }
+
+/* hızlı menü: üst çubuktaki "Menü" ile açılır */
+.quick-menu { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; padding: calc(12px + var(--safe-t)) calc(12px + var(--safe-r)) calc(12px + var(--safe-b)) calc(12px + var(--safe-l)); background: rgba(5,10,14,0.55); pointer-events: auto; touch-action: none; animation: fadein 0.15s ease; }
+.quick-menu.hidden { display: none; }
+.qm-grid { display: grid; grid-template-columns: repeat(3, minmax(96px, 128px)); gap: 12px; max-height: 100%; overflow-y: auto; }
+.qm-btn { pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 14px 8px; min-height: 84px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.18); background: rgba(16,26,32,0.92); color: #fff; font-family: var(--font); font-weight: 700; font-size: 12.5px; box-shadow: 0 6px 18px rgba(0,0,0,0.35); }
+.qm-btn:active { background: rgba(255,200,87,0.28); border-color: var(--accent); }
+.qm-btn.hidden { display: none; }
+.qm-icon .ri { width: 28px; height: 28px; }
+.qm-close { border-color: rgba(255,120,100,0.4); }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 
 /* HUD'un dokunmatikteki hâli: klavye ipuçları gizli, slotlar dokunulabilir */
 .touch .key-hints, .touch .click-hint { display: none !important; }
@@ -650,6 +674,7 @@ button { font-family: inherit; }
   .touch-cluster { transform: scale(0.82); }
   .joy-hint { width: 92px; height: 92px; left: calc(24px + var(--safe-l)); bottom: calc(24px + var(--safe-b)); }
   .touch .boss-bar { top: calc(104px + var(--safe-t)); }
+  .touch .region-label { display: none; }
 
   /* paneller ve menüler kısa ekrana sığsın */
   .panel { max-height: 96vh; width: 98vw; border-radius: 12px; }
@@ -732,7 +757,26 @@ button { font-family: inherit; }
 }
 
 .inv-note.moving { color: var(--accent); font-weight: 700; }
+
+/* dokunmatikte sadeleştirilmiş HUD: zorluk rozeti gizli, görev listesi dokununca küçülür */
+.touch .diff-badge { display: none; }
+.touch .quest-tracker { pointer-events: auto; }
+.touch .quest-tracker .qt-item:first-child { position: relative; padding-right: 26px; }
+.touch .quest-tracker .qt-item:first-child::after { content: ''; position: absolute; right: 10px; top: 14px; border: 5px solid transparent; border-bottom-color: rgba(255,255,255,0.65); border-top-width: 0; }
+.touch .quest-tracker.collapsed .qt-item:first-child::after { border-bottom-width: 0; border-top: 5px solid rgba(255,255,255,0.65); }
+.touch .quest-tracker.collapsed .qt-item:not(:first-child),
+.touch .quest-tracker.collapsed .qt-hint,
+.touch .quest-tracker.collapsed .qt-type,
+.touch .quest-tracker.collapsed .qt-obj.done { display: none; }
+.touch .quest-tracker.collapsed .qt-obj:not(.done) ~ .qt-obj:not(.done) { display: none; }
+.touch .hud-left { gap: 8px; }
+.touch .toast { max-width: 100%; }
 .touch .dialog { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.25) transparent; }
+
+/* dar dikey ekranda oyun adı taşmasın */
+@media (max-width: 600px) {
+  .game-title { font-size: min(64px, 14vw); letter-spacing: 0.06em; }
+}
 
 /* dikey tutulan telefon: yan çevirme uyarısı */
 .rotate-hint { display: none; position: fixed; inset: 0; z-index: 60; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; background: rgba(5,10,14,0.94); pointer-events: auto; }

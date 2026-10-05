@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { h, kbd, renderSlot, itemChip } from './dom.js';
 import { setRich, plainText } from './rich.js';
 import { forInput } from './touchText.js';
+import { svgIcon } from './icons.js';
+import { isPhone } from '../utils/device.js';
 import { ITEMS } from '../data/items.js';
 import { QUESTS, QUEST_TYPES } from '../data/quests.js';
 import { RECIPE_MAP } from '../data/recipes.js';
@@ -178,10 +180,21 @@ export class HUD {
     this.mpPanel.classList.toggle('hidden', !net.active);
     if (!net.active) {
       this.mpPanel.replaceChildren();
+      this.mpCollapsed = false;
+      this.mpOpenTime = 0;
       return;
     }
+    if (this.mpCollapsed) {
+      // küçük çip: dokununca oyuncu listesi yeniden açılır
+      this.mpPanel.classList.add('collapsed');
+      this.mpPanel.replaceChildren(h('button', { class: 'mp-chip', type: 'button', onclick: () => this.setMpCollapsed(false) },
+        svgIcon('globe'), h('b', { class: 'mp-code' }, net.code ?? '……'), h('span', { class: 'mp-count' }, `${net.playerCount}/8`)));
+      return;
+    }
+    this.mpPanel.classList.remove('collapsed');
     const rows = [{ name: g.profile.name, self: true, host: net.isHost }];
     for (const p of net.players.values()) rows.push({ name: p.name, host: p.id === net.hostId });
+    const chatHint = g.settings.touchEnabled ? 'Sohbet: üstteki sohbet düğmesi' : `Sohbet: ${keyLabel(g.settings.bindings.chat?.[0])}`;
     this.mpPanel.replaceChildren(
       h('div', { class: 'mp-head' },
         h('span', {}, '🌐 Oda ', h('b', { class: 'mp-code' }, net.code ?? '……')),
@@ -189,8 +202,18 @@ export class HUD {
       ),
       ...rows.map((r) => h('div', { class: `mp-row ${r.self ? 'self' : ''}` },
         h('span', { class: 'dot' }), r.name, r.host ? h('span', { class: 'crown', title: 'Odayı kuran' }, '👑') : null)),
-      h('div', { class: 'mp-hint' }, `Sohbet: ${keyLabel(g.settings.bindings.chat?.[0])}`),
+      h('div', { class: 'mp-foot' },
+        h('span', { class: 'mp-hint' }, chatHint),
+        h('button', { class: 'btn small mp-ok', type: 'button', onclick: () => this.setMpCollapsed(true) }, 'Tamam'),
+      ),
     );
+  }
+
+  /** Çok oyunculu oda paneli: Tamam → küçük çip; çipe dokununca geri açılır. */
+  setMpCollapsed(on) {
+    this.mpCollapsed = on;
+    this.mpOpenTime = 0;
+    this.renderPlayers();
   }
 
   renderDifficulty() {
@@ -241,6 +264,16 @@ export class HUD {
       this.xpText,
     );
     this.tracker = h('div', { class: 'quest-tracker' });
+    // dokunmatikte göreve dokununca küçülür/büyür (telefonda küçük başlar)
+    this.trackerCollapsed = isPhone();
+    this.tracker.classList.toggle('collapsed', this.trackerCollapsed);
+    this.tracker.addEventListener('pointerdown', (e) => {
+      if (!this.game.settings.touchEnabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.trackerCollapsed = !this.trackerCollapsed;
+      this.tracker.classList.toggle('collapsed', this.trackerCollapsed);
+    });
     this.xpPopLayer = h('div', { style: { position: 'absolute', right: '232px', top: '58px' } });
     this.el.append(h('div', { class: 'hud-right' }, clock, this.tracker), this.xpPopLayer);
   }
@@ -418,7 +451,8 @@ export class HUD {
   toast(text, type = 'info', duration = 3600) {
     const t = h('div', { class: `toast ${type}` }, forInput(this.game, text));
     this.toasts.append(t);
-    while (this.toasts.children.length > 4) this.toasts.firstChild.remove();
+    const maxToasts = this.game.settings.touchEnabled ? 2 : 4;
+    while (this.toasts.children.length > maxToasts) this.toasts.firstChild.remove();
     setTimeout(() => {
       t.classList.add('out');
       setTimeout(() => t.remove(), 500);
@@ -527,12 +561,19 @@ export class HUD {
     this.bannerTimer -= dt;
     if (this.bannerTimer <= 0 && this.bannerQueue.length) this.showNextBanner();
 
+    // oda paneli bir süre sonra kendiliğinden küçülür (imleç kilitliyken tıklanamadığı için)
+    if (g.net?.active && !this.mpCollapsed) {
+      this.mpOpenTime = (this.mpOpenTime ?? 0) + dt;
+      if (this.mpOpenTime > 15) this.setMpCollapsed(true);
+    }
+
     if (g.settings.showFps) {
       this.fps.classList.remove('hidden');
       this.fpsFrames++;
       this.fpsTime += dt;
       if (this.fpsTime >= 0.5) {
-        this.fps.textContent = `${Math.round(this.fpsFrames / this.fpsTime)} FPS`;
+        const rs = g.resScale ?? 1;
+        this.fps.textContent = `${Math.round(this.fpsFrames / this.fpsTime)} FPS${rs < 0.999 ? ` · çözünürlük %${Math.round(rs * 100)}` : ''}`;
         this.fpsFrames = 0;
         this.fpsTime = 0;
       }

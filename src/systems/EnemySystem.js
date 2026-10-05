@@ -3,9 +3,10 @@ import { ENEMIES } from '../data/enemies.js';
 import { buildCreatureModel, animateCreature } from '../world/CreatureModels.js';
 import { rollDrops } from './LootSystem.js';
 import { mulberry32, randRange, damp, dampAngle } from '../utils/math.js';
+import { setShadowCasting, CREATURE_SHADOW_RANGE } from '../utils/shadows.js';
 
 const ACTIVE_RANGE = 120; // bu mesafede oyuncu yoksa düşman donar
-const DRAW_RANGE = 130;
+const DRAW_RANGE = 105;
 const CORPSE_TIME = 7;
 const RESPAWN_CLEAR = 45; // yeniden doğarken bu yakınlıkta oyuncu olmasın
 
@@ -591,7 +592,10 @@ export class EnemySystem {
       if (e.slow > 0 && !this.remote) e.slow -= dt;
       const visible = camD < DRAW_RANGE && !g.world.inCave;
       e.model.root.visible = visible;
-      if (visible) this.place(e, dt);
+      if (visible) {
+        setShadowCasting(e.model.root, camD < CREATURE_SHADOW_RANGE);
+        this.place(e, dt);
+      }
     }
     this.updateProjectiles(dt);
 

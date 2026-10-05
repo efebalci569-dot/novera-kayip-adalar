@@ -3,9 +3,10 @@ import { ANIMALS } from '../data/animals.js';
 import { buildAnimalModel } from '../world/AnimalModels.js';
 import { rollDrops } from './LootSystem.js';
 import { mulberry32, randRange, clamp, damp, dampAngle, lerp } from '../utils/math.js';
+import { setShadowCasting, CREATURE_SHADOW_RANGE } from '../utils/shadows.js';
 
 const ACTIVE_RANGE = 150; // bu mesafenin dışındaki hayvanlar donar
-const DRAW_RANGE = 125;
+const DRAW_RANGE = 110;
 const CARCASS_TIME = 300; // parçalanmayan leş bu kadar sonra kaybolur (s)
 const MIN_SPAWN_DIST = 55; // yeniden doğanlar oyuncunun gözü önünde belirmesin
 
@@ -565,9 +566,13 @@ export class AnimalSystem {
         if (near.d < ACTIVE_RANGE && g.isSimulating) this.updateAnimal(a, dt, near.p);
       }
       if (!this.list.includes(a)) continue;
-      const visible = Math.hypot(a.x - cam.x, a.z - cam.z) < DRAW_RANGE;
+      const camD = Math.hypot(a.x - cam.x, a.z - cam.z);
+      const visible = camD < DRAW_RANGE;
       a.model.root.visible = visible;
-      if (visible) this.placeModel(a, dt);
+      if (visible) {
+        setShadowCasting(a.model.root, camD < CREATURE_SHADOW_RANGE);
+        this.placeModel(a, dt);
+      }
     }
 
     // ara sıra uzaktan ses

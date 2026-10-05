@@ -1,7 +1,7 @@
 import { h } from './dom.js';
 import { setRich } from './rich.js';
 import { SaveManager } from '../core/SaveManager.js';
-import { QUALITY_PRESETS } from '../core/Settings.js';
+import { QUALITY_PRESETS, UI_SCALES } from '../core/Settings.js';
 import { ACTIONS, keyLabel } from '../data/controls.js';
 import { DIFFICULTIES, DIFFICULTY_ORDER, difficultyDef } from '../data/difficulty.js';
 import {
@@ -405,8 +405,13 @@ export class MenuUI {
         h('div', { class: 'setting' }, h('span', {}, 'Kamera'), camSeg),
         toggle('Baş sallanması (yürürken)', 'headBob'),
         slider('Görüş açısı (FOV)', 'fov', 50, 90, 1, (v) => `${Math.round(v)}°`),
+        h('div', { class: 'setting' }, h('span', {}, 'Arayüz boyutu'), h('div', { class: 'seg' }, UI_SCALES.map(([id, label]) => h('button', {
+          class: String(s.uiScale) === String(id) ? 'active' : '',
+          onclick: () => { s.set('uiScale', id); this.showSettings(from); },
+        }, label)))),
+        toggle('Otomatik çözünürlük (takılırsa azaltır)', 'autoResolution'),
         toggle('FPS göster', 'showFps'),
-        h('div', { class: 'inv-note' }, 'Düşük: gölgeler kapalı, daha az çim. Yüksek: keskin gölgeler ve tam çözünürlük.'),
+        h('div', { class: 'inv-note' }, 'Düşük: gölgeler kapalı, az çim — zayıf cihazlar ve telefonlar için. Orta: gölgeler açık, dengeli. Yüksek: yumuşak gölgeler, daha sık çim, keskin görüntü.'),
       ];
     } else {
       const touchSeg = h('div', { class: 'seg' }, [['auto', 'Otomatik'], ['on', 'Açık'], ['off', 'Kapalı']].map(([id, label]) => h('button', {

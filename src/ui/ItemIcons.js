@@ -139,3 +139,28 @@ export function iconImage(url) {
   }
   return im.complete && im.naturalWidth ? im : null;
 }
+
+/**
+ * İkonları boşta kalan zamanda, birer birer ve aralıklı önceden çizer: menü/panel ilk açılırken
+ * onlarca ikonun aynı karede çizilip takılma yapmasını önler (oyunun karelerini de sıkıştırmaz).
+ * list: [[tür, kimlik], …]
+ */
+export function warmIcons(list) {
+  const queue = list.filter(([kind, id]) => !cache.has(`${kind}:${id}`));
+  const idle = window.requestIdleCallback
+    ? (fn) => window.requestIdleCallback(fn, { timeout: 2000 })
+    : (fn) => fn();
+  const tick = () => {
+    if (!queue.length) return;
+    if (document.hidden) {
+      setTimeout(tick, 1000);
+      return;
+    }
+    idle(() => {
+      const [kind, id] = queue.shift();
+      iconURL(kind, id);
+      setTimeout(tick, 180);
+    });
+  };
+  tick();
+}
